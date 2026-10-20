@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPI · Tablero de inversiones — DNP</title>
+  <meta name="description" content="Plan Plurianual de Inversiones por gobierno — Departamento Nacional de Planeación">
+
+  <!-- Space Grotesk, la tipografía de la plantilla DNP 2026-II. Si no hay
+       conexión (o el host bloquea Google Fonts) cae a la del sistema. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="assets/css/estilos.css?v=202610200925">
+</head>
+<body>
+
+  <nav class="dnp-nav" id="dnpNav">
+    <div class="dnp-nav-inner">
+      <a class="dnp-brand" href="#inicio" id="dnpBrand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text"><strong>DNP</strong> · Plan Plurianual de Inversiones</span>
+      </a>
+      <button class="dnp-nav-toggle" id="dnpNavToggle" type="button" aria-label="Abrir menú">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
+      <div class="dnp-links" id="dnpLinks"></div>
+    </div>
+  </nav>
+
+  <!-- Cada hoja se dibuja aquí (una sola a la vez, sin recargar la página) -->
+  <div id="contenido"></div>
+
+  <footer class="dnp-footer">
+    <div class="franja-dnp">
+      <span class="franja amarillo"></span>
+      <span class="franja azul"></span>
+      <span class="franja rojo"></span>
+    </div>
+    <div class="container-xl footer-inner">
+      <div class="footer-brand">
+        <strong>Departamento Nacional de Planeación</strong><br>
+        Plan Plurianual de Inversiones · Programación y ejecución
+      </div>
+      <div class="footer-meta">
+        Montos en miles de millones de pesos<br>
+        Última actualización de datos: <span id="anioPie">—</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Sin bundler ni dependencias externas: los scripts se cargan en orden y
+       cada uno expone un objeto global (Formato, DNP, Cubo, UI, …). -->
+  <script src="assets/js/carga.js?v=202610200925"></script>
+  <script src="assets/js/formato.js?v=202610200925"></script>
+  <script src="assets/js/tema.js?v=202610200925"></script>
+  <script src="assets/js/ui.js?v=202610200925"></script>
+  <script src="assets/js/cubo.js?v=202610200925"></script>
+  <script src="assets/js/medida.js?v=202610200925"></script>
+  <script src="assets/js/programas.js?v=202610200925"></script>
+  <script src="assets/js/graficas.js?v=202610200925"></script>
+  <script src="assets/js/mapa.js?v=202610200925"></script>
+  <script src="assets/js/descargas.js?v=202610200925"></script>
+  <script src="assets/js/hojas/inicio.js?v=202610200925"></script>
+  <script src="assets/js/hojas/visor.js?v=202610200925"></script>
+  <script src="assets/js/hojas/ppi_2027.js?v=202610200925"></script>
+  <script src="assets/js/hojas/descargar.js?v=202610200925"></script>
+  <script src="assets/js/hojas/iniciativas.js?v=202610200925"></script>
+  <script src="assets/js/hojas/notas.js?v=202610200925"></script>
+  <script src="assets/js/app.js?v=202610200925"></script>
+</body>
+</html>
