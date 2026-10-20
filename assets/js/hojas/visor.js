@@ -40,7 +40,7 @@ const HojaVisor = (() => {
     ambito: 'Por gobierno',
     gobiernos: [], indicadores: ['Planeado PPI'],
     vista: 'Totales',
-    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null },
+    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null },
     fondoDe: null          // fuente general a la que pertenece la fuente específica elegida
   };
 
@@ -148,7 +148,12 @@ const HojaVisor = (() => {
       // fijar (DES) cuando no hay nada explícito elegido en ellos.
       linea1: est.sel.linea || (est.sel.tema || est.sel.estrategia ? DES : 'Total'),
       linea2: est.sel.estrategia ? DES : (est.sel.tema || 'Total'),
-      linea3: est.sel.estrategia || 'Total'
+      linea3: est.sel.estrategia || 'Total',
+      // entidad: SOLO existe desagregada dentro de fuente_general="PGN" (el resto del cubo la
+      // trae en 'Total'); no es jerárquica con nada más, así que no necesita el patrón DES de
+      // arriba — basta con no fijarla cuando no hay nada elegido (normalizar() en cubo.js ya
+      // pone 'Total' por defecto).
+      entidad: est.sel.entidad || 'Total'
     });
   }
   function serieQ(s, extra) {
@@ -251,6 +256,12 @@ const HojaVisor = (() => {
     if (unica !== est.fondoDe) { est.sel.fondo = null; est.fondoDe = unica; }
   }
 
+  // La entidad solo existe dentro de PGN: si «Fuentes» deja de ser exactamente PGN, se descarta.
+  function sincronizarEntidad() {
+    const f = est.sel.fuente;
+    if (!(f && f.length === 1 && f[0] === 'PGN')) est.sel.entidad = null;
+  }
+
   // --------------------------------------------------------------------------
   function render(raiz) {
     if (!est.gobiernos.length) est.gobiernos = [Cubo.meta.gob_prog[0]];   // default: el PPI más reciente (hoy 2027-2030)
@@ -272,6 +283,7 @@ const HojaVisor = (() => {
     const contVigencias = UI.h('div', {});
     const contSectores = UI.h('div', {});
     const contProgramas = UI.h('div', {});
+    const contEntidad = UI.h('div', {});
     const contMapa = UI.h('div', { style: { height: '420px' } });
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
@@ -293,7 +305,9 @@ const HojaVisor = (() => {
             UI.h('div', { class: 'col-7' },
               UI.card('Sectores', contSectores),
               UI.card(UI.h('span', {}, 'Programas ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas)),
+                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas),
+              UI.card(UI.h('span', {}, 'Entidad ',
+                UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad)),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -393,6 +407,7 @@ const HojaVisor = (() => {
       const s1 = series()[0], s2 = series()[1];
       Formato.modo = Medida.pib ? 'pib' : 'cop';        // «% del PIB» se muestra con decimales y sin «$»
       sincronizarFondo();
+      sincronizarEntidad();
 
       // --- Aviso de cobertura: un PPI "preliminar" (p. ej. 2027-2030, que hoy no trae PGN, SGR,
       // Cooperación ni Privados) no es comparable con los completos; se dice en pantalla.
@@ -476,13 +491,14 @@ const HojaVisor = (() => {
         Vigencia: est.sel.vigencia, Fuente: est.sel.fuente, 'Fuente específica': est.sel.fondo,
         Eje: est.sel.linea ? est.sel.linea.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
         Tema: est.sel.tema ? est.sel.tema.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
-        Estrategia: est.sel.estrategia ? est.sel.estrategia.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null
+        Estrategia: est.sel.estrategia ? est.sel.estrategia.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
+        Entidad: est.sel.entidad
       };
-      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia' };
+      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia', Entidad: 'entidad' };
       UI.vaciar(chips).append(UI.chips(etiquetas,
         (dim) => {
           est.sel[claveDim[dim]] = null;
-          if (claveDim[dim] === 'fuente') est.sel.fondo = null;
+          if (claveDim[dim] === 'fuente') { est.sel.fondo = null; est.sel.entidad = null; }
           if (claveDim[dim] === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
           if (claveDim[dim] === 'tema') est.sel.estrategia = null;
           actualizar();
@@ -759,6 +775,28 @@ const HojaVisor = (() => {
             'Clic en una barra para filtrar todo el visor por esa fuente específica.' +
             (entreGob() ? ' Las fuentes específicas están homologadas para poder compararlas entre gobiernos; ' +
                           'cuando un gobierno no las desagrega (p. ej. el SGR de Santos y Duque) su monto aparece en una sola categoría genérica.' : '')));
+        }
+      }
+
+      // --- Entidad: desglose por entidad, SOLO existe dentro de PGN (ver baseQ/entidad). A
+      //     diferencia de «Fuente específica», si cruza con las líneas del PND (en programación).
+      UI.vaciar(contEntidad);
+      const esPGN = fuentesSel.length === 1 && fuentesSel[0] === 'PGN';
+      if (mb === 'aviso') {
+        vacio(contEntidad);
+      } else if (!esPGN) {
+        pista('Elija PGN en «Fuentes» para ver el desglose por entidad',
+          'La entidad solo existe dentro del PGN: haga clic en «PGN» en el gráfico «Fuentes» (y deje esa sola fuente elegida).');
+      } else {
+        const n = pintarTop(contEntidad, 'entidad', 'entidad', true, entreGob() ? 16 : 12);
+        if (!n) {
+          UI.vaciar(contEntidad);
+          pista('Sin desglose para esta combinación',
+            'El PGN no tiene entidades con los filtros elegidos, o el cubo no cruza esa combinación.');
+        } else {
+          contEntidad.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
+            'Clic en una barra para filtrar todo el visor por esa entidad. En PPI 2027-2030 el PGN es ' +
+            'solo funcionamiento, así que el ranking de entidades no se parece al de gobiernos anteriores.'));
         }
       }
 

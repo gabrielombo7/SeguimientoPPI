@@ -113,7 +113,7 @@ descargas/                  PPI_2027-2030_wide.csv — archivo ESTÁTICO (no lo 
 pipeline/
   actualizar_insumos.R      copia los insumos desde 4. Consolidar y 1. Fuentes/Supuestos
   exportar_web.R            convierte los insumos en data/*.js
-  exportar_base_wide.R      arma descargas/PPI_2027-2030_wide.csv desde 1. Consulta/PPI/datos_PPI.xlsx
+  exportar_base_wide.R      arma descargas/PPI_2027-2030_wide.csv desde 1. Consulta/datos_PPI.xlsx
                              (correr a mano cuando ese Excel cambie; no depende de exportar_web.R)
   insumos/                  cubo, catálogos, geo, iniciativas, Excel de interfaz (no se publica)
 ```

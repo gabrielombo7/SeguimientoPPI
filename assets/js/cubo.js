@@ -35,7 +35,8 @@ const Cubo = (() => {
   const ARG_COL = {
     indicador: 'indicador', tipo_dato: 'tipo_dato', vigencia: 'vigencia',
     fuente_general: 'fuente_general', fuente_fondo: 'fuente_fondo', sector: 'sector',
-    departamento: 'departamento', linea1: 'linea1_pnd', linea2: 'linea2_pnd', linea3: 'linea3_pnd'
+    departamento: 'departamento', linea1: 'linea1_pnd', linea2: 'linea2_pnd', linea3: 'linea3_pnd',
+    entidad: 'entidad'
   };
   // El marginal de vigencia se llama 'Totales'; el de las demás, 'Total'
   const totalDe = (col) => (col === 'vigencia' ? 'Totales' : 'Total');
@@ -150,7 +151,12 @@ const Cubo = (() => {
       // por defecto ya es 'Total' y ahí no hay filas de linea2 específico—, un caller que fije
       // linea2 a un Tema concreto sin tocar linea3 SÍ tiene ahora filas de Estrategia debajo; con
       // null sumaría el marginal del Tema Y sus Estrategias (doble conteo). Ver baseQ() en visor.js.
-      linea1: 'Total', linea2: null, linea3: 'Total'
+      linea1: 'Total', linea2: null, linea3: 'Total',
+      // entidad default 'Total' por la misma razón: solo existe desagregada dentro de
+      // fuente_general="PGN" (en las demás fuentes ya vale "Total" en el propio cubo), pero
+      // cualquier consulta que no pida el desglose por entidad debe quedarse con el marginal —
+      // si no, al elegir PGN sin fijar entidad se sumarían el total de PGN Y cada entidad suya.
+      entidad: 'Total'
     };
     for (const k of Object.keys(r)) {
       if (Object.prototype.hasOwnProperty.call(q, k)) r[k] = q[k];

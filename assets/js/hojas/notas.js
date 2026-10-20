@@ -1,10 +1,11 @@
 // ============================================================================
 // hojas/notas.js — Hoja "Notas". Equivale a modules/mod_documentacion.R.
 //
-// Tres capítulos desplegables, con el contenido SIEMPRE desde el Excel de
-// interfaz (exportado a meta.json): Notas metodológicas (abierto por defecto),
-// Registros administrativos (solo tipo RRAA, sin catálogos ni calidad) y
-// Glosario. La app no duplica estos textos.
+// Tres capítulos desplegables: Notas metodológicas (abierto por defecto) y Glosario vienen
+// SIEMPRE del Excel de interfaz (exportado a meta.js); Fuentes combina metodología escrita a
+// mano en pipeline/exportar_web.R (FUENTES_METODO, porque no está en ese Excel) con los
+// registros administrativos que sí vienen de ahí (solo tipo RRAA, sin catálogos ni calidad).
+// La app no duplica estos textos.
 // ============================================================================
 
 const HojaNotas = (() => {
@@ -30,12 +31,21 @@ const HojaNotas = (() => {
     return frag;
   }
 
-  function bloquesNotas() {
-    const meta = Cubo.meta;
-    return UI.h('div', {}, (meta.notas || []).map((b) =>
+  function bloques(lista) {
+    return UI.h('div', {}, (lista || []).map((b) =>
       UI.h('div', { class: 'bloque-notas' },
         UI.h('h4', {}, b.titulo),
         UI.h('ul', {}, [].concat(b.items || []).map((i) => UI.h('li', {}, i))))));
+  }
+  const bloquesNotas = () => bloques(Cubo.meta.notas);
+
+  // «Fuentes»: de dónde sale cada fuente de financiación (y el deflactor, y la asociación con el
+  // PND), seguido de los registros administrativos que ya traía el Excel de interfaz.
+  function fuentes() {
+    return UI.h('div', {},
+      bloques(Cubo.meta.fuentes_metodologia),
+      UI.h('h4', {}, 'Registros administrativos'),
+      registrosRraa());
   }
 
   function registrosRraa() {
@@ -76,7 +86,7 @@ const HojaNotas = (() => {
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.acordeon([
         { id: 'notas', titulo: 'Notas metodológicas', contenido: bloquesNotas },
-        { id: 'registros', titulo: 'Registros administrativos', contenido: registrosRraa },
+        { id: 'fuentes', titulo: 'Fuentes', contenido: fuentes },
         { id: 'glosario', titulo: 'Glosario', contenido: glosario }
       ], { abiertos: ['notas'] })));
   }

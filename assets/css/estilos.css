@@ -383,12 +383,12 @@ a { color: inherit; }
 .tabla-dnp { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .tabla-dnp thead th {
   background: var(--dnp-primario); color: #fff; font-weight: 600; font-size: .8rem;
-  text-align: left; padding: .5rem .65rem; position: sticky; z-index: 1;
-  /* top:0 quedaba bajo el nav (sticky, z-index 1050): con una tabla larga sin paginar
-     (p. ej. Eje/Tema/Estrategia desplegada), al hacer scroll el encabezado se "pegaba"
-     justo detrás del nav y desaparecía. Mismo offset que .panel-fijo, que resuelve el
-     mismo problema para el panel de filtros. */
-  top: 76px;
+  text-align: left; padding: .5rem .65rem;
+  /* NO sticky: se probó (top:76px, bajo el nav) para que el encabezado siguiera visible
+     al hacer scroll en una tabla larga sin paginar (Eje/Tema/Estrategia desplegada), pero
+     un thead "pegado" se superpone a la fila que caiga justo ahí en ese momento del scroll
+     — con 2-3 niveles desplegados, varios theads (Eje/Tema/Estrategia) se apilaban y
+     tapaban filas completas. Mejor un encabezado fijo en su lugar, sin ese riesgo. */
 }
 .tabla-dnp tbody td { padding: .4rem .65rem; border-top: 1px solid var(--dnp-borde); vertical-align: top; }
 .tabla-dnp tbody tr:nth-child(odd) td { background: var(--dnp-primario-claro); }
