@@ -155,7 +155,12 @@ a { color: inherit; }
 .col-5 { flex: 1 1 280px; min-width: 0; }
 /* Fila de tres cajas (Fuentes · Fuente específica · Vigencias): la de en medio, más ancha por sus nombres largos */
 .col-t { flex: 1 1 240px; min-width: 0; }
-.col-t-ancha { flex: 1.55 1 300px; min-width: 0; }
+.col-t-ancha { flex: 1.35 1 300px; min-width: 0; }
+/* Vigencias y Fuentes a la misma altura por defecto: .fila-graficas ya estira estas dos columnas
+   a la altura de la más alta (align-items:stretch, el valor por defecto de flex); falta que la
+   tarjeta DENTRO de cada columna aproveche ese alto en vez de quedarse con el de su contenido. */
+.col-t, .col-t-ancha { display: flex; }
+.col-t > .card-dnp, .col-t-ancha > .card-dnp { flex: 1 1 auto; }
 .panel-fijo { position: sticky; top: 76px; }
 
 /* ---------------------------------------------------------------- Tarjetas */
@@ -190,6 +195,10 @@ a { color: inherit; }
   font-weight: 700; font-size: .92rem; color: var(--dnp-tinta); padding: .75rem 1rem;
   display: flex; align-items: center; gap: .75rem;
 }
+/* El título (siempre el primer hijo) crece para llenar el espacio disponible, así lo que venga
+   después (opciones.acciones, p. ej. el selector de vista) queda SIEMPRE anclado a la derecha —
+   sin esto, un título más largo o más corto según la vista activa corre esos botones de lugar. */
+.card-dnp-header > :first-child { flex: 1 1 auto; min-width: 0; }
 .card-dnp-body { padding: 1rem; flex: 1 1 auto; min-height: 0; }
 .card-dnp-body.sin-padding { padding: 0; }
 .texto-suave { color: var(--dnp-gris); font-weight: 400; font-size: .78rem; }
@@ -228,6 +237,27 @@ a { color: inherit; }
 .grupo-btn:not(.vertical) button + button { border-left: 1px solid var(--dnp-borde); }
 .grupo-btn.vertical button + button { border-left: 0; border-top: 1px solid var(--dnp-borde); }
 .grupo-btn button[aria-pressed="true"] { background: var(--dnp-primario); color: #fff; font-weight: 600; }
+
+/* Selector de vista dentro del header de una tarjeta (Fuentes↔Específica, Sectores↔Programas↔
+   Entidad): versión más liviana — sin contorno duro, «segmented control» con fondo suave y la
+   opción activa como una píldora blanca — en vez del grupo de botones de contorno recto que se usa
+   en los filtros. Solo aplica anidado dentro de card-dnp-header, así el resto de usos de
+   .grupo-btn (p. ej. «Por gobierno / Entre gobiernos» en Filtros) no cambia. */
+.card-dnp-header .grupo-btn {
+  border: none; border-radius: 999px; background: var(--dnp-fondo); padding: 3px; gap: 2px;
+  flex: 0 0 auto; overflow: visible;
+  box-shadow: inset 0 1px 2px rgba(28, 29, 61, .08);
+}
+.card-dnp-header .grupo-btn button {
+  flex: 0 0 auto; border-radius: 999px; padding: .32rem .75rem; font-size: .76rem;
+  white-space: nowrap; min-width: 0; border-left: 0 !important;
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.card-dnp-header .grupo-btn button:hover[aria-pressed="false"] { color: var(--dnp-tinta); }
+.card-dnp-header .grupo-btn button[aria-pressed="true"] {
+  background: #fff; color: var(--dnp-tinta);
+  box-shadow: 0 1px 2px rgba(28, 29, 61, .14);
+}
 
 /* Desplegable propio (reemplaza pickerInput / bootstrap-select) */
 .picker { position: relative; }
@@ -347,6 +377,9 @@ a { color: inherit; }
 .grafica .valor-barra { font-size: 10px; fill: var(--dnp-gris); }
 .grafica .rebanada { cursor: pointer; transition: opacity .15s ease; }
 .grafica .rebanada:hover { opacity: .85; }
+/* Dona de «Fuentes»: un poco más chica que la caja que la contiene (no se toca el ancho de la
+   caja en sí, solo el de la gráfica), centrada en el espacio sobrante. */
+.grafica-dona-chica { max-width: 88%; margin: 0 auto; }
 .leyenda { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .5rem; font-size: .76rem; color: var(--dnp-gris); }
 .leyenda-item { display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; }
 .leyenda-color { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
@@ -533,13 +566,16 @@ a { color: inherit; }
 .nota-unidad b { font-weight: 700; }
 
 /* ------------------------------------------ Tarjeta «Fuente específica» */
+/* Aviso informativo, no un error: fondo e insignia iguales a .nota-unidad (el mismo lenguaje
+   visual que ya usa el tablero para "esto es normal, falta un clic", no una caja rota). */
 .fuente-esp-vacia {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .55rem;
-  min-height: 190px; padding: 1.1rem 1rem; text-align: center;
-  border: 2px dashed var(--dnp-borde); border-radius: .9rem; background: #FAF9FC;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 190px; padding: 1.1rem 1.2rem; text-align: center;
+  border-radius: .9rem; background: var(--dnp-primario-claro); border-left: 4px solid var(--dnp-primario);
 }
-.fuente-esp-vacia .flecha-izq {
-  font-size: 1.6rem; line-height: 1; color: var(--dnp-primario); font-weight: 700;
+.fuente-esp-vacia .icono-aviso {
+  display: flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem;
+  border-radius: 50%; background: var(--dnp-primario); color: #fff; font-size: .85rem; font-weight: 700;
 }
 .fuente-esp-vacia .msg { font-weight: 700; color: var(--dnp-primario-osc); font-size: .95rem; }
 .fuente-esp-vacia .det { color: var(--dnp-gris); font-size: .8rem; max-width: 34ch; line-height: 1.4; }
@@ -548,4 +584,3 @@ a { color: inherit; }
   font-size: .8rem; font-weight: 700; color: #fff; background: var(--dnp-primario); border-radius: 999px;
 }
 .fuente-esp-de span { font-weight: 400; opacity: .85; }
-@media (max-width: 720px) { .fuente-esp-vacia .flecha-izq { transform: rotate(90deg); } }

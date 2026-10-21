@@ -41,7 +41,10 @@ const HojaVisor = (() => {
     gobiernos: [], indicadores: ['Planeado PPI'],
     vista: 'Totales',
     sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null },
-    fondoDe: null          // fuente general a la que pertenece la fuente específica elegida
+    fondoDe: null,          // fuente general a la que pertenece la fuente específica elegida
+    // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
+    vistaFuentes: 'fuentes',          // 'fuentes' | 'especifica'
+    vistaSector: 'sectores'           // 'sectores' | 'programas' | 'entidad'
   };
 
   const entreGob = () => est.ambito === 'Entre gobiernos';
@@ -259,7 +262,14 @@ const HojaVisor = (() => {
   // La entidad solo existe dentro de PGN: si «Fuentes» deja de ser exactamente PGN, se descarta.
   function sincronizarEntidad() {
     const f = est.sel.fuente;
-    if (!(f && f.length === 1 && f[0] === 'PGN')) est.sel.entidad = null;
+    const esPGN = f && f.length === 1 && f[0] === 'PGN';
+    if (!esPGN) est.sel.entidad = null;
+    // vistaSector solo vuelve a «sectores» cuando REALMENTE se deja de tener PGN (transición, igual
+    // que fondoDe arriba) — comparar "esPGN" a secas en cada pintar() nunca dejaría LLEGAR a la
+    // vista Entidad sin tener PGN ya elegido (el botón quedaría roto: no pasaría nada al tocarlo,
+    // porque este mismo chequeo la regresaría a «sectores» antes de pintarla).
+    if (est.vistaSector === 'entidad' && est.huboPGN && !esPGN) est.vistaSector = 'sectores';
+    est.huboPGN = esPGN;
   }
 
   // --------------------------------------------------------------------------
@@ -288,26 +298,34 @@ const HojaVisor = (() => {
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
 
+    // Envoltorios de las dos cajas con selector de vista (Fuentes↔Fuente específica,
+    // Sectores↔Programas↔Entidad): cada contenedor de contenido sigue siendo el mismo de
+    // siempre (pintar() los sigue llenando exactamente igual), solo se oculta el que no
+    // corresponde a la vista activa — ver pintar(). Título y acciones del header son nodos
+    // persistentes para poder repintarlos cada ciclo (texto distinto, botón activo distinto).
+    const envFuentes = UI.h('div', {}, contFuentes);
+    const envFondo = UI.h('div', {}, contFondo);
+    const tituloFuentes = UI.h('span', {});
+    const accFuentes = UI.h('div', {});
+    const envSectores = UI.h('div', {}, contSectores);
+    const envProgramas = UI.h('div', {}, contProgramas);
+    const envEntidad = UI.h('div', {}, contEntidad);
+    const tituloSector = UI.h('span', {});
+    const accSector = UI.h('div', {});
+
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
         UI.h('div', { class: 'col-filtros' }, panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
-          // Fila 1: tres cajas · Fila 2: sector y departamento (mapa) lado a lado
+          // Fila 1: dos cajas · Fila 2: sector y departamento (mapa) lado a lado
           UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 't col-t' }, UI.card('Fuentes', contFuentes)),
-            UI.h('div', { class: 't col-t-ancha' }, UI.card(
-              UI.h('span', {}, 'Fuente específica ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')),
-              contFondo)),
+            UI.h('div', { class: 't col-t-ancha' },
+              UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
             UI.h('div', { class: 't col-t' }, UI.card('Vigencias', contVigencias))),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
-              UI.card('Sectores', contSectores),
-              UI.card(UI.h('span', {}, 'Programas ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas),
-              UI.card(UI.h('span', {}, 'Entidad ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad)),
+              UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas, envEntidad), { acciones: accSector })),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -408,6 +426,38 @@ const HojaVisor = (() => {
       Formato.modo = Medida.pib ? 'pib' : 'cop';        // «% del PIB» se muestra con decimales y sin «$»
       sincronizarFondo();
       sincronizarEntidad();
+
+      // --- Selector de vista de las dos cajas fusionadas: cambia qué sub-caja se ve, nunca
+      // dispara una nueva consulta (por eso el botón llama pintar(), no actualizar()).
+      envFuentes.hidden = est.vistaFuentes !== 'fuentes';
+      envFondo.hidden = est.vistaFuentes !== 'especifica';
+      UI.vaciar(tituloFuentes).append(est.vistaFuentes === 'fuentes'
+        ? 'Fuentes'
+        : UI.h('span', {}, 'Fuente específica ',
+            UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')));
+      UI.vaciar(accFuentes).append(UI.grupoBotones({
+        opciones: [{ valor: 'fuentes', texto: 'Fuentes' }, { valor: 'especifica', texto: 'Específica' }],
+        valor: est.vistaFuentes,
+        onCambio: (v) => { est.vistaFuentes = v; pintar(); }
+      }));
+
+      envSectores.hidden = est.vistaSector !== 'sectores';
+      envProgramas.hidden = est.vistaSector !== 'programas';
+      envEntidad.hidden = est.vistaSector !== 'entidad';
+      const TITULOS_SECTOR = {
+        sectores: 'Sectores',
+        programas: UI.h('span', {}, 'Programas ',
+          UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')),
+        entidad: UI.h('span', {}, 'Entidad ',
+          UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN'))
+      };
+      UI.vaciar(tituloSector).append(TITULOS_SECTOR[est.vistaSector]);
+      UI.vaciar(accSector).append(UI.grupoBotones({
+        opciones: [{ valor: 'sectores', texto: 'Sectores' }, { valor: 'programas', texto: 'Programas' },
+                   { valor: 'entidad', texto: 'Entidad (PGN)' }],
+        valor: est.vistaSector,
+        onCambio: (v) => { est.vistaSector = v; pintar(); }
+      }));
 
       // --- Aviso de cobertura: un PPI "preliminar" (p. ej. 2027-2030, que hoy no trae PGN, SGR,
       // Cooperación ni Privados) no es comparable con los completos; se dice en pantalla.
@@ -630,10 +680,12 @@ const HojaVisor = (() => {
           });
           contFuentes.append(g.svg, Graficas.leyenda(g.series, g.pal));
         } else {
-          contFuentes.append(Graficas.dona(d.sort((a, b) => b.valor - a.valor), {
+          const dona = Graficas.dona(d.sort((a, b) => b.valor - a.valor), {
             onClick: (c) => { alternar('fuente', c); actualizar(); },
             seleccion: est.sel.fuente, colores: PAL_FUENTES, ancho: 340, alto: 240
-          }));
+          });
+          dona.classList.add('grafica-dona-chica');
+          contFuentes.append(dona);
         }
       }
 
@@ -749,11 +801,12 @@ const HojaVisor = (() => {
       if (mb === 'aviso') vacio(contSectores);
       else pintarTop(contSectores, 'sector', 'sector', false, 20);   // los 20 mayores + «Otros» (el resto, listado debajo)
 
-      // Pista «sin datos» con flecha, reutilizada por «Fuente específica» y «Entidad» — cada una
-      // pasa su propio contenedor (antes estaba fija a contFondo: los avisos de Entidad se pintaban
-      // ahí sin que nadie los viera, nunca en su propia caja).
+      // Pista «sin datos», reutilizada por «Fuente específica» y «Entidad» — cada una pasa su
+      // propio contenedor (antes estaba fija a contFondo: los avisos de Entidad se pintaban ahí
+      // sin que nadie los viera, nunca en su propia caja). Es un aviso informativo, no un error:
+      // sin flecha (ya no hay una caja vecina a la que apuntar, ambas viven en cajas con selector).
       const pista = (cont, msg, det) => cont.append(UI.h('div', { class: 'fuente-esp-vacia' },
-        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '←'),
+        UI.h('div', { class: 'icono-aviso', 'aria-hidden': 'true' }, 'i'),
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
 
       // --- Fuente específica: desglose de UNA fuente general elegida en «Fuentes».
@@ -829,7 +882,7 @@ const HojaVisor = (() => {
       const mio = ++tokProg;
       UI.vaciar(contProgramas);
       const pistaP = (msg, det) => contProgramas.append(UI.h('div', { class: 'fuente-esp-vacia' },
-        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '↑'),
+        UI.h('div', { class: 'icono-aviso', 'aria-hidden': 'true' }, 'i'),
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const sectoresSel = est.sel.sector || [];
       if (modoBarras() === 'aviso') return UI.vaciar(contProgramas).append(UI.estadoVacio(MSG_UNGOB, DET_UNGOB));

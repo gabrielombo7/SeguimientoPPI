@@ -32,7 +32,10 @@ const HojaPPI2027 = (() => {
     gobiernos: [GOBIERNO], indicadores: ['Planeado PPI'],
     vista: 'Totales',
     sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null },
-    fondoDe: null
+    fondoDe: null,
+    // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
+    vistaFuentes: 'fuentes',          // 'fuentes' | 'especifica'
+    vistaSector: 'sectores'           // 'sectores' | 'programas'
   };
 
   const entreGob = () => false;                  // esta hoja nunca compara gobiernos
@@ -159,10 +162,10 @@ const HojaPPI2027 = (() => {
   // departamento — la suma de estas filas da exactamente el total (22.858 filas, verificado). Las
   // líneas del PND (linea1/linea2) quedan fuera: el cubo no las cruza con la fuente específica (0 filas
   // si se agregan las 7 juntas), así que van en una descarga aparte si hace falta.
-  // Descarga la base OFICIAL de consulta (datos_PPI.xlsx de 1. Consulta, no el cubo del tablero),
+  // Descarga la base OFICIAL de consulta (1. Consulta/Datos/PPI.xlsx, no el cubo del tablero),
   // filtrada a PPI 2027-2030, SIN transformar: misma estructura de columnas y misma fila por
   // vigencia que en Consulta. Es un archivo estático que arma pipeline/exportar_base_wide.R — si
-  // datos_PPI.xlsx cambia, ese script hay que volver a correrlo a mano (no pasa solo con exportar_web.R).
+  // ese Excel cambia, ese script hay que volver a correrlo a mano (no pasa solo con exportar_web.R).
   // SIN fetch (ver Descargas.archivo): el sitio se abre como file:// y fetch() no puede leer
   // un archivo local ahí — con fetch, el botón parecía funcionar al probarlo por http:// (el
   // único protocolo donde fetch SÍ lee archivos locales) pero fallaba en el uso real.
@@ -192,23 +195,29 @@ const HojaPPI2027 = (() => {
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
 
+    // Envoltorios de las dos cajas con selector de vista — ver el comentario equivalente en
+    // hojas/visor.js. Aquí Sectores/Programas es un selector de 2, no de 3 (no hay Entidad).
+    const envFuentes = UI.h('div', {}, contFuentes);
+    const envFondo = UI.h('div', {}, contFondo);
+    const tituloFuentes = UI.h('span', {});
+    const accFuentes = UI.h('div', {});
+    const envSectores = UI.h('div', {}, contSectores);
+    const envProgramas = UI.h('div', {}, contProgramas);
+    const tituloSector = UI.h('span', {});
+    const accSector = UI.h('div', {});
+
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
         UI.h('div', { class: 'col-filtros' }, panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
           UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 't col-t' }, UI.card('Fuentes', contFuentes)),
-            UI.h('div', { class: 't col-t-ancha' }, UI.card(
-              UI.h('span', {}, 'Fuente específica ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')),
-              contFondo)),
+            UI.h('div', { class: 't col-t-ancha' },
+              UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
             UI.h('div', { class: 't col-t' }, UI.card('Vigencias', contVigencias))),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
-              UI.card('Sectores', contSectores),
-              UI.card(UI.h('span', {}, 'Programas ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas)),
+              UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas), { acciones: accSector })),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -258,6 +267,32 @@ const HojaPPI2027 = (() => {
       const s1 = series()[0], s2 = series()[1];
       Formato.modo = Medida.pib ? 'pib' : 'cop';
       sincronizarFondo();
+
+      // --- Selector de vista de las dos cajas fusionadas — ver el comentario equivalente en
+      // hojas/visor.js. pintar() (no actualizar()): cambiar de vista no dispara una consulta nueva.
+      envFuentes.hidden = est.vistaFuentes !== 'fuentes';
+      envFondo.hidden = est.vistaFuentes !== 'especifica';
+      UI.vaciar(tituloFuentes).append(est.vistaFuentes === 'fuentes'
+        ? 'Fuentes'
+        : UI.h('span', {}, 'Fuente específica ',
+            UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')));
+      UI.vaciar(accFuentes).append(UI.grupoBotones({
+        opciones: [{ valor: 'fuentes', texto: 'Fuentes' }, { valor: 'especifica', texto: 'Específica' }],
+        valor: est.vistaFuentes,
+        onCambio: (v) => { est.vistaFuentes = v; pintar(); }
+      }));
+
+      envSectores.hidden = est.vistaSector !== 'sectores';
+      envProgramas.hidden = est.vistaSector !== 'programas';
+      UI.vaciar(tituloSector).append(est.vistaSector === 'sectores'
+        ? 'Sectores'
+        : UI.h('span', {}, 'Programas ',
+            UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')));
+      UI.vaciar(accSector).append(UI.grupoBotones({
+        opciones: [{ valor: 'sectores', texto: 'Sectores' }, { valor: 'programas', texto: 'Programas' }],
+        valor: est.vistaSector,
+        onCambio: (v) => { est.vistaSector = v; pintar(); }
+      }));
 
       UI.vaciar(avisos);
       gobs().map((g) => Cubo.infoGobierno(g)).filter((i) => i.estado && i.estado !== 'completo')
@@ -371,10 +406,12 @@ const HojaPPI2027 = (() => {
           });
           contFuentes.append(g.svg, Graficas.leyenda(g.series, g.pal));
         } else {
-          contFuentes.append(Graficas.dona(d.sort((a, b) => b.valor - a.valor), {
+          const dona = Graficas.dona(d.sort((a, b) => b.valor - a.valor), {
             onClick: (c) => { alternar('fuente', c); actualizar(); },
             seleccion: est.sel.fuente, colores: PAL_FUENTES, ancho: 340, alto: 240
-          }));
+          });
+          dona.classList.add('grafica-dona-chica');
+          contFuentes.append(dona);
         }
       }
 
@@ -465,7 +502,7 @@ const HojaPPI2027 = (() => {
       // --- Fuente específica
       UI.vaciar(contFondo);
       const pista = (msg, det) => contFondo.append(UI.h('div', { class: 'fuente-esp-vacia' },
-        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '←'),
+        UI.h('div', { class: 'icono-aviso', 'aria-hidden': 'true' }, 'i'),
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const fuentesSel = est.sel.fuente || [];
       if (!fuentesSel.length) {
@@ -500,7 +537,7 @@ const HojaPPI2027 = (() => {
       const mio = ++tokProg;
       UI.vaciar(contProgramas);
       const pistaP = (msg, det) => contProgramas.append(UI.h('div', { class: 'fuente-esp-vacia' },
-        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '↑'),
+        UI.h('div', { class: 'icono-aviso', 'aria-hidden': 'true' }, 'i'),
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const sectoresSel = est.sel.sector || [];
       if (inds()[0] !== 'Planeado PPI' || modo() !== 'simple') return pistaP('Solo para «Planeado PPI»', 'El desglose por programa existe solo para la programación.');
