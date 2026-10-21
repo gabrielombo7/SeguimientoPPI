@@ -284,6 +284,10 @@ const HojaVisor = (() => {
     const contSectores = UI.h('div', {});
     const contProgramas = UI.h('div', {});
     const contEntidad = UI.h('div', {});
+    // Tarjeta completa (no solo el contenido): se oculta entera cuando la fuente no es
+    // exactamente PGN, en vez de mostrar una caja con una pista — ver pintar().
+    const cardEntidad = UI.card(UI.h('span', {}, 'Entidad ',
+      UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad);
     const contMapa = UI.h('div', { style: { height: '420px' } });
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
@@ -306,8 +310,7 @@ const HojaVisor = (() => {
               UI.card('Sectores', contSectores),
               UI.card(UI.h('span', {}, 'Programas ',
                 UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas),
-              UI.card(UI.h('span', {}, 'Entidad ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad)),
+              cardEntidad),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -779,15 +782,12 @@ const HojaVisor = (() => {
       }
 
       // --- Entidad: desglose por entidad, SOLO existe dentro de PGN (ver baseQ/entidad). A
-      //     diferencia de «Fuente específica», si cruza con las líneas del PND (en programación).
+      //     diferencia de «Fuente específica», sí cruza con las líneas del PND (en programación).
+      //     La tarjeta entera se oculta (no una pista) salvo que la fuente sea exactamente PGN.
       UI.vaciar(contEntidad);
       const esPGN = fuentesSel.length === 1 && fuentesSel[0] === 'PGN';
-      if (mb === 'aviso') {
-        vacio(contEntidad);
-      } else if (!esPGN) {
-        pista('Elija PGN en «Fuentes» para ver el desglose por entidad',
-          'La entidad solo existe dentro del PGN: haga clic en «PGN» en el gráfico «Fuentes» (y deje esa sola fuente elegida).');
-      } else {
+      cardEntidad.style.display = (mb !== 'aviso' && esPGN) ? '' : 'none';
+      if (mb !== 'aviso' && esPGN) {
         const n = pintarTop(contEntidad, 'entidad', 'entidad', true, entreGob() ? 16 : 12);
         if (!n) {
           UI.vaciar(contEntidad);

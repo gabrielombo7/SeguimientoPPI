@@ -108,12 +108,13 @@ assets/js/
   hojas/                    una por pestaña (inicio, visor, ppi_2027, descargar, iniciativas, notas)
   app.js                    navegación
 data/                       GENERADO por pipeline/exportar_web.R (no editar)
-descargas/                  PPI_2027-2030_wide.csv — archivo ESTÁTICO (no lo genera exportar_web.R,
+descargas/                  PPI_2027-2030.csv — archivo ESTÁTICO (no lo genera exportar_web.R,
                              ver pipeline/exportar_base_wide.R), botón «Descargar base de datos» de ppi_2027.js
 pipeline/
   actualizar_insumos.R      copia los insumos desde 4. Consolidar y 1. Fuentes/Supuestos
   exportar_web.R            convierte los insumos en data/*.js
-  exportar_base_wide.R      arma descargas/PPI_2027-2030_wide.csv desde 1. Consulta/datos_PPI.xlsx
+  exportar_base_wide.R      arma descargas/PPI_2027-2030.csv desde 1. Consulta/datos_PPI.xlsx —
+                             PPI 2027-2030 sin transformar, misma estructura que en Consulta
                              (correr a mano cuando ese Excel cambie; no depende de exportar_web.R)
   insumos/                  cubo, catálogos, geo, iniciativas, Excel de interfaz (no se publica)
 ```

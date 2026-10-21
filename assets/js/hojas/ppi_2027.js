@@ -31,7 +31,7 @@ const HojaPPI2027 = (() => {
     ambito: 'Por gobierno',
     gobiernos: [GOBIERNO], indicadores: ['Planeado PPI'],
     vista: 'Totales',
-    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null },
+    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null },
     fondoDe: null
   };
 
@@ -88,9 +88,7 @@ const HojaPPI2027 = (() => {
       // ellos, porque los códigos de Tema/Estrategia ya son únicos por sí solos.
       linea1: est.sel.linea || (est.sel.tema || est.sel.estrategia ? DES : 'Total'),
       linea2: est.sel.estrategia ? DES : (est.sel.tema || 'Total'),
-      linea3: est.sel.estrategia || 'Total',
-      // entidad: ver el comentario equivalente en hojas/visor.js — solo existe dentro de PGN.
-      entidad: est.sel.entidad || 'Total'
+      linea3: est.sel.estrategia || 'Total'
     });
   }
   function serieQ(s, extra) {
@@ -156,26 +154,20 @@ const HojaPPI2027 = (() => {
     if (unica !== est.fondoDe) { est.sel.fondo = null; est.fondoDe = unica; }
   }
 
-  // La entidad solo existe dentro de PGN: si «Fuentes» deja de ser exactamente PGN, se descarta.
-  function sincronizarEntidad() {
-    const f = est.sel.fuente;
-    if (!(f && f.length === 1 && f[0] === 'PGN')) est.sel.entidad = null;
-  }
-
   // Descarga la base de PPI 2027-2030 (Planeado PPI, corrientes), desagregada por las 5 dimensiones
   // que el cubo SÍ cruza todas a la vez: vigencia, fuente general, fuente específica, sector y
   // departamento — la suma de estas filas da exactamente el total (22.858 filas, verificado). Las
   // líneas del PND (linea1/linea2) quedan fuera: el cubo no las cruza con la fuente específica (0 filas
   // si se agregan las 7 juntas), así que van en una descarga aparte si hace falta.
   // Descarga la base OFICIAL de consulta (datos_PPI.xlsx de 1. Consulta, no el cubo del tablero),
-  // filtrada a PPI 2027-2030 y en formato ANCHO (una columna por vigencia: 2027/2028/2029/2030). Es
-  // un archivo estático que arma pipeline/exportar_base_wide.R — si datos_PPI.xlsx cambia, ese script
-  // hay que volver a correrlo a mano (no pasa solo con exportar_web.R).
+  // filtrada a PPI 2027-2030, SIN transformar: misma estructura de columnas y misma fila por
+  // vigencia que en Consulta. Es un archivo estático que arma pipeline/exportar_base_wide.R — si
+  // datos_PPI.xlsx cambia, ese script hay que volver a correrlo a mano (no pasa solo con exportar_web.R).
   // SIN fetch (ver Descargas.archivo): el sitio se abre como file:// y fetch() no puede leer
   // un archivo local ahí — con fetch, el botón parecía funcionar al probarlo por http:// (el
   // único protocolo donde fetch SÍ lee archivos locales) pero fallaba en el uso real.
   function descargarBase() {
-    Descargas.archivo('descargas/PPI_2027-2030_wide.csv', 'PPI_2027-2030_wide.csv');
+    Descargas.archivo('descargas/PPI_2027-2030.csv', 'PPI_2027-2030.csv');
   }
 
   // --------------------------------------------------------------------------
@@ -196,7 +188,6 @@ const HojaPPI2027 = (() => {
     const contVigencias = UI.h('div', {});
     const contSectores = UI.h('div', {});
     const contProgramas = UI.h('div', {});
-    const contEntidad = UI.h('div', {});
     const contMapa = UI.h('div', { style: { height: '420px' } });
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
@@ -217,9 +208,7 @@ const HojaPPI2027 = (() => {
             UI.h('div', { class: 'col-7' },
               UI.card('Sectores', contSectores),
               UI.card(UI.h('span', {}, 'Programas ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas),
-              UI.card(UI.h('span', {}, 'Entidad ',
-                UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad)),
+                UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas)),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -249,7 +238,7 @@ const HojaPPI2027 = (() => {
         UI.h('button', { class: 'btn-primario', type: 'button', onclick: Descargas.ficha }, 'Ficha'),
         UI.h('button', {
           class: 'btn-secundario', type: 'button', style: { marginTop: '.5rem' },
-          title: 'Descarga todas las filas de PPI 2027-2030 (Planeado PPI, corrientes), sin agregar',
+          title: 'Descarga todas las filas de PPI 2027-2030, igual que en la base de Consulta (sin agregar)',
           onclick: descargarBase
         }, 'Descargar base de datos')
       ), { clase: 'card-filtros' }));
@@ -269,7 +258,6 @@ const HojaPPI2027 = (() => {
       const s1 = series()[0], s2 = series()[1];
       Formato.modo = Medida.pib ? 'pib' : 'cop';
       sincronizarFondo();
-      sincronizarEntidad();
 
       UI.vaciar(avisos);
       gobs().map((g) => Cubo.infoGobierno(g)).filter((i) => i.estado && i.estado !== 'completo')
@@ -338,13 +326,12 @@ const HojaPPI2027 = (() => {
         Eje: est.sel.linea ? est.sel.linea.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
         Tema: est.sel.tema ? est.sel.tema.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
         Estrategia: est.sel.estrategia ? est.sel.estrategia.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
-        Entidad: est.sel.entidad
       };
-      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia', Entidad: 'entidad' };
+      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia' };
       UI.vaciar(chips).append(UI.chips(etiquetas,
         (dim) => {
           est.sel[claveDim[dim]] = null;
-          if (claveDim[dim] === 'fuente') { est.sel.fondo = null; est.sel.entidad = null; }
+          if (claveDim[dim] === 'fuente') est.sel.fondo = null;
           if (claveDim[dim] === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
           if (claveDim[dim] === 'tema') est.sel.estrategia = null;
           actualizar();
@@ -500,25 +487,6 @@ const HojaPPI2027 = (() => {
         } else {
           contFondo.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
             'Clic en una barra para filtrar todo el visor por esa fuente específica.'));
-        }
-      }
-
-      // --- Entidad: desglose por entidad, SOLO existe dentro de PGN (ver baseQ/entidad).
-      UI.vaciar(contEntidad);
-      const esPGN = fuentesSel.length === 1 && fuentesSel[0] === 'PGN';
-      if (!esPGN) {
-        pista('Elija PGN en «Fuentes» para ver el desglose por entidad',
-          'La entidad solo existe dentro del PGN: haga clic en «PGN» en el gráfico «Fuentes» (y deje esa sola fuente elegida).');
-      } else {
-        const n = pintarTop(contEntidad, 'entidad', 'entidad', true, 12);
-        if (!n) {
-          UI.vaciar(contEntidad);
-          pista('Sin desglose para esta combinación',
-            'El PGN no tiene entidades con los filtros elegidos, o el cubo no cruza esa combinación.');
-        } else {
-          contEntidad.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
-            'Clic en una barra para filtrar todo el visor por esa entidad. El PGN del PPI 2027-2030 es ' +
-            'solo funcionamiento, así que el ranking de entidades no se parece al de gobiernos anteriores.'));
         }
       }
 
