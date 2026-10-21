@@ -284,10 +284,6 @@ const HojaVisor = (() => {
     const contSectores = UI.h('div', {});
     const contProgramas = UI.h('div', {});
     const contEntidad = UI.h('div', {});
-    // Tarjeta completa (no solo el contenido): se oculta entera cuando la fuente no es
-    // exactamente PGN, en vez de mostrar una caja con una pista — ver pintar().
-    const cardEntidad = UI.card(UI.h('span', {}, 'Entidad ',
-      UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad);
     const contMapa = UI.h('div', { style: { height: '420px' } });
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
@@ -310,7 +306,8 @@ const HojaVisor = (() => {
               UI.card('Sectores', contSectores),
               UI.card(UI.h('span', {}, 'Programas ',
                 UI.h('span', { class: 'texto-suave' }, '— desglose del sector elegido en «Sectores»')), contProgramas),
-              cardEntidad),
+              UI.card(UI.h('span', {}, 'Entidad ',
+                UI.h('span', { class: 'texto-suave' }, '— desglose por entidad del PGN')), contEntidad)),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
               UI.h('div', {}, contMapa, contLeyenda)))),
           contLineas))));
@@ -601,6 +598,10 @@ const HojaVisor = (() => {
           onClick: esVig ? null : (c) => { alternar(clave, c); actualizar(); }, seleccion: esVig ? null : est.sel[clave],
           formatear: puntos ? (v) => Formato.pp(v) : (v) => Formato.cop(v, 0, true)
         }));
+        // Leyenda de color por magnitud (mismos cortes y colores del mapa en modo «cambio»), debajo
+        // de la gráfica como la del mapa — el color no indica creció/decreció, sino qué tan grande
+        // fue el cambio (ver colorCambio en tema.js).
+        cont.append(Mapa.leyenda(PAL_CAMBIO, ETIQ_CAMBIO, 'Magnitud de la variación'));
         if (otros.length) {
           cont.append(UI.h('div', { class: 'sectores-otros' },
             UI.h('b', {}, `Otros (${otros.length}): `), otros.join(', ')));
@@ -748,30 +749,34 @@ const HojaVisor = (() => {
       if (mb === 'aviso') vacio(contSectores);
       else pintarTop(contSectores, 'sector', 'sector', false, 20);   // los 20 mayores + «Otros» (el resto, listado debajo)
 
+      // Pista «sin datos» con flecha, reutilizada por «Fuente específica» y «Entidad» — cada una
+      // pasa su propio contenedor (antes estaba fija a contFondo: los avisos de Entidad se pintaban
+      // ahí sin que nadie los viera, nunca en su propia caja).
+      const pista = (cont, msg, det) => cont.append(UI.h('div', { class: 'fuente-esp-vacia' },
+        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '←'),
+        UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
+
       // --- Fuente específica: desglose de UNA fuente general elegida en «Fuentes».
       //     Por defecto (sin fuente) queda vacía, con una pista que apunta a «Fuentes».
       UI.vaciar(contFondo);
-      const pista = (msg, det) => contFondo.append(UI.h('div', { class: 'fuente-esp-vacia' },
-        UI.h('div', { class: 'flecha-izq', 'aria-hidden': 'true' }, '←'),
-        UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const fuentesSel = est.sel.fuente || [];
       if (mb === 'aviso') {
         vacio(contFondo);
       } else if (!fuentesSel.length) {
-        pista('Elija una fuente para ver su desglose',
+        pista(contFondo, 'Elija una fuente para ver su desglose',
           'Haga clic en una fuente del gráfico «Fuentes»: aquí aparecerán sus fuentes específicas.');
       } else if (fuentesSel.length > 1) {
-        pista(`Hay ${fuentesSel.length} fuentes seleccionadas`,
+        pista(contFondo, `Hay ${fuentesSel.length} fuentes seleccionadas`,
           'El desglose es de una sola fuente: deje una sola elegida en «Fuentes».');
       } else if (est.sel.linea) {
-        pista('Sin cruce con las líneas del PND',
+        pista(contFondo, 'Sin cruce con las líneas del PND',
           'El cubo no cruza la fuente específica con las líneas del PND: quite la línea elegida para ver el desglose.');
       } else {
         contFondo.append(UI.h('div', { class: 'fuente-esp-de' }, 'Fuente:', UI.h('span', {}, fuentesSel[0])));
         const n = pintarTop(contFondo, 'fuente_fondo', 'fondo', true, entreGob() ? 16 : 12);
         if (!n) {
           UI.vaciar(contFondo);
-          pista('Sin desglose para esta combinación',
+          pista(contFondo, 'Sin desglose para esta combinación',
             'Esta fuente no tiene fuente específica con los filtros elegidos, o el cubo no cruza esa combinación.');
         } else {
           contFondo.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
@@ -783,15 +788,19 @@ const HojaVisor = (() => {
 
       // --- Entidad: desglose por entidad, SOLO existe dentro de PGN (ver baseQ/entidad). A
       //     diferencia de «Fuente específica», sí cruza con las líneas del PND (en programación).
-      //     La tarjeta entera se oculta (no una pista) salvo que la fuente sea exactamente PGN.
+      //     Tarjeta siempre visible (igual que Programas): con una pista cuando no aplica.
       UI.vaciar(contEntidad);
       const esPGN = fuentesSel.length === 1 && fuentesSel[0] === 'PGN';
-      cardEntidad.style.display = (mb !== 'aviso' && esPGN) ? '' : 'none';
-      if (mb !== 'aviso' && esPGN) {
+      if (mb === 'aviso') {
+        vacio(contEntidad);
+      } else if (!esPGN) {
+        pista(contEntidad, 'Elija PGN en «Fuentes» para ver el desglose por entidad',
+          'La entidad solo existe dentro del PGN: haga clic en «PGN» en el gráfico «Fuentes» (y deje esa sola fuente elegida).');
+      } else {
         const n = pintarTop(contEntidad, 'entidad', 'entidad', true, entreGob() ? 16 : 12);
         if (!n) {
           UI.vaciar(contEntidad);
-          pista('Sin desglose para esta combinación',
+          pista(contEntidad, 'Sin desglose para esta combinación',
             'El PGN no tiene entidades con los filtros elegidos, o el cubo no cruza esa combinación.');
         } else {
           contEntidad.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
