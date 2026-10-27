@@ -361,6 +361,14 @@ const UI = {
   // --- Tooltip compartido -----------------------------------------------------
   tooltip: (() => {
     let el = null;
+    const ocultar = () => { if (el) el.hidden = true; };
+    // En móvil no hay "mouseleave" tras un tap (no hay un mouse real que se "vaya"): sin esto el
+    // tooltip quedaba pegado en pantalla hasta el siguiente tap sobre otra barra/rebanada. Se
+    // oculta en cualquier touch o scroll nuevo; si el toque cae sobre otro elemento con tooltip,
+    // el mousemove sintético que dispara el navegador justo después lo vuelve a mostrar con su
+    // propio contenido, así que esto nunca tapa un tooltip que sí debía aparecer.
+    document.addEventListener('touchstart', ocultar, { passive: true, capture: true });
+    document.addEventListener('scroll', ocultar, { passive: true, capture: true });
     return {
       mostrar(html, ev) {
         if (!el) { el = h('div', { class: 'tooltip-dnp' }); document.body.append(el); }
@@ -372,7 +380,7 @@ const UI = {
         el.style.left = Math.max(8, x) + 'px';
         el.style.top = Math.max(8, y) + 'px';
       },
-      ocultar() { if (el) el.hidden = true; }
+      ocultar
     };
   })()
 };

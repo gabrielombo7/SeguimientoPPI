@@ -34,7 +34,8 @@ const HojaPPI2027 = (() => {
     sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null },
     fondoDe: null,
     // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
-    vistaFuentes: 'fuentes',          // 'fuentes' | 'especifica'
+    vistaFuentes: 'sin_privados',     // 'total' | 'sin_privados' | 'especifica' — por defecto sin Privados
+                                       // (es más de la mitad del PPI y tapa el resto de la torta)
     vistaSector: 'sectores'           // 'sectores' | 'programas'
   };
 
@@ -250,7 +251,9 @@ const HojaPPI2027 = (() => {
           title: 'Descarga todas las filas de PPI 2027-2030, igual que en la base de Consulta (sin agregar)',
           onclick: descargarBase
         }, 'Descargar base de datos')
-      ), { clase: 'card-filtros' }));
+      // zoom:true — los filtros SÍ conviene poder ampliarlos: en celular (o con la página larga)
+      // cuesta tenerlos todos a la vista a la vez para armar una selección.
+      ), { clase: 'card-filtros', zoom: true }));
     }
 
     let token = 0;
@@ -270,14 +273,18 @@ const HojaPPI2027 = (() => {
 
       // --- Selector de vista de las dos cajas fusionadas — ver el comentario equivalente en
       // hojas/visor.js. pintar() (no actualizar()): cambiar de vista no dispara una consulta nueva.
-      envFuentes.hidden = est.vistaFuentes !== 'fuentes';
+      envFuentes.hidden = est.vistaFuentes === 'especifica';
       envFondo.hidden = est.vistaFuentes !== 'especifica';
-      UI.vaciar(tituloFuentes).append(est.vistaFuentes === 'fuentes'
-        ? 'Fuentes'
-        : UI.h('span', {}, 'Fuente específica ',
-            UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')));
+      const TITULOS_FUENTES = {
+        total: 'Fuentes',
+        sin_privados: UI.h('span', {}, 'Fuentes ', UI.h('span', { class: 'texto-suave' }, '— sin privados')),
+        especifica: UI.h('span', {}, 'Fuente específica ',
+          UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»'))
+      };
+      UI.vaciar(tituloFuentes).append(TITULOS_FUENTES[est.vistaFuentes]);
       UI.vaciar(accFuentes).append(UI.grupoBotones({
-        opciones: [{ valor: 'fuentes', texto: 'Fuentes' }, { valor: 'especifica', texto: 'Específica' }],
+        opciones: [{ valor: 'total', texto: 'Total' }, { valor: 'sin_privados', texto: 'Sin privados' },
+                   { valor: 'especifica', texto: 'Específica' }],
         valor: est.vistaFuentes,
         onCambio: (v) => { est.vistaFuentes = v; pintar(); }
       }));
@@ -391,7 +398,8 @@ const HojaPPI2027 = (() => {
       // --- Fuentes
       UI.vaciar(contFuentes);
       {
-        const d = porDim('fuente_general');
+        let d = porDim('fuente_general');
+        if (est.vistaFuentes === 'sin_privados') d = d.filter((x) => x.cat !== 'Privados');
         if (mb === 'overlay') d.sort((a, b) => b.planeado - a.planeado);
         else if (mb === 'grupo') { const tot = new Map(); d.forEach((x) => tot.set(x.cat, (tot.get(x.cat) || 0) + x.valor)); d.sort((a, b) => tot.get(b.cat) - tot.get(a.cat)); }
         if (mb === 'overlay') {

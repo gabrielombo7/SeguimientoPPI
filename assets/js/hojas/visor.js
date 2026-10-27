@@ -43,7 +43,8 @@ const HojaVisor = (() => {
     sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null },
     fondoDe: null,          // fuente general a la que pertenece la fuente específica elegida
     // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
-    vistaFuentes: 'fuentes',          // 'fuentes' | 'especifica'
+    vistaFuentes: 'sin_privados',     // 'total' | 'sin_privados' | 'especifica' — por defecto sin Privados
+                                       // (es más de la mitad del PPI y tapa el resto de la torta)
     vistaSector: 'sectores'           // 'sectores' | 'programas' | 'entidad'
   };
 
@@ -407,7 +408,9 @@ const HojaVisor = (() => {
               onCambio: (v) => { est.vista = v; pintarFiltros(); actualizar(); }
             })
           : null
-      ), { clase: 'card-filtros' }));
+      // zoom:true — los filtros SÍ conviene poder ampliarlos: en celular (o con la página larga)
+      // cuesta tenerlos todos a la vista a la vez para armar una selección.
+      ), { clase: 'card-filtros', zoom: true }));
     }
 
     // --- Actualización de todas las vistas -------------------------------------
@@ -429,14 +432,18 @@ const HojaVisor = (() => {
 
       // --- Selector de vista de las dos cajas fusionadas: cambia qué sub-caja se ve, nunca
       // dispara una nueva consulta (por eso el botón llama pintar(), no actualizar()).
-      envFuentes.hidden = est.vistaFuentes !== 'fuentes';
+      envFuentes.hidden = est.vistaFuentes === 'especifica';
       envFondo.hidden = est.vistaFuentes !== 'especifica';
-      UI.vaciar(tituloFuentes).append(est.vistaFuentes === 'fuentes'
-        ? 'Fuentes'
-        : UI.h('span', {}, 'Fuente específica ',
-            UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»')));
+      const TITULOS_FUENTES = {
+        total: 'Fuentes',
+        sin_privados: UI.h('span', {}, 'Fuentes ', UI.h('span', { class: 'texto-suave' }, '— sin privados')),
+        especifica: UI.h('span', {}, 'Fuente específica ',
+          UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»'))
+      };
+      UI.vaciar(tituloFuentes).append(TITULOS_FUENTES[est.vistaFuentes]);
       UI.vaciar(accFuentes).append(UI.grupoBotones({
-        opciones: [{ valor: 'fuentes', texto: 'Fuentes' }, { valor: 'especifica', texto: 'Específica' }],
+        opciones: [{ valor: 'total', texto: 'Total' }, { valor: 'sin_privados', texto: 'Sin privados' },
+                   { valor: 'especifica', texto: 'Específica' }],
         valor: est.vistaFuentes,
         onCambio: (v) => { est.vistaFuentes = v; pintar(); }
       }));
@@ -591,7 +598,9 @@ const HojaVisor = (() => {
       // participación (valor ÷ total de esa misma dimensión en ese gobierno; cambio en puntos). El color
       // es por la MAGNITUD de la variación relativa (tema.js:colorCambio), no por el signo. `vigencia` se
       // alinea por «Año k» del periodo (como porDim) porque los calendarios de los 2 gobiernos no coinciden.
-      const porValidacion = (arg, n) => {
+      // `excluir`: categorías que se descartan antes de rankear/sumar (p. ej. Privados en la vista
+      // «Sin privados» de Fuentes) — así el total y el top-n ya no cuentan con ellas.
+      const porValidacion = (arg, n, excluir) => {
         if (arg === 'vigencia') {
           // Por vigencia, «cambio en totales»/«participación» compara cada año CON EL SIGUIENTE, en
           // una sola serie cronológica continua con los años de los 2 gobiernos (incluida la
@@ -612,6 +621,7 @@ const HojaVisor = (() => {
         }
         const den = new Map(Cubo.agregar(serieQ(s1, { [arg]: DES }), arg).map((d) => [d.cat, d.valor]));
         const num = new Map(Cubo.agregar(serieQ(s2, { [arg]: DES }), arg).map((d) => [d.cat, d.valor]));
+        if (excluir) excluir.forEach((c) => { den.delete(c); num.delete(c); });
         const tot1 = [...den.values()].reduce((a, b) => a + b, 0), tot2 = [...num.values()].reduce((a, b) => a + b, 0);
         let filas = [...new Set([...den.keys(), ...num.keys()])].map((cat) => {
           const v1 = den.get(cat) || 0, v2 = num.get(cat) || 0;
@@ -628,8 +638,8 @@ const HojaVisor = (() => {
         }
         return { filas, otros };
       };
-      const pintarCambio = (cont, arg, clave, n, puntos) => {
-        const { filas, otros } = porValidacion(arg, n);
+      const pintarCambio = (cont, arg, clave, n, puntos, excluir) => {
+        const { filas, otros } = porValidacion(arg, n, excluir);
         const esVig = arg === 'vigencia';   // año → año siguiente: "cat" ya no es un valor de filtro válido
         const datos = filas.map((f) => {
           const base = puntos ? f.p1 : f.v1, actual = puntos ? f.p2 : f.v2;
@@ -661,10 +671,13 @@ const HojaVisor = (() => {
 
       // --- Fuentes
       UI.vaciar(contFuentes);
+      const sinPrivados = est.vistaFuentes === 'sin_privados';
       if (mb === 'aviso') vacio(contFuentes);
-      else if (mb === 'cambio' || mb === 'participacion') pintarCambio(contFuentes, 'fuente_general', 'fuente', 12, mb === 'participacion');
-      else {
-        const d = porDim('fuente_general');
+      else if (mb === 'cambio' || mb === 'participacion') {
+        pintarCambio(contFuentes, 'fuente_general', 'fuente', 12, mb === 'participacion', sinPrivados ? ['Privados'] : null);
+      } else {
+        let d = porDim('fuente_general');
+        if (sinPrivados) d = d.filter((x) => x.cat !== 'Privados');
         // Fuentes de MAYOR a MENOR: por lo planeado (balance) o por el total de las series (una o varias, también entre gobiernos)
         if (mb === 'overlay') d.sort((a, b) => b.planeado - a.planeado);
         else if (mb === 'grupo') { const tot = new Map(); d.forEach((x) => tot.set(x.cat, (tot.get(x.cat) || 0) + x.valor)); d.sort((a, b) => tot.get(b.cat) - tot.get(a.cat)); }
@@ -913,14 +926,39 @@ const HojaVisor = (() => {
         const r = Graficas.topOtros(porGob[0][1], 12);
         otros = r.otros;
         contProgramas.append(Graficas.barrasLista(r.datos, {}));
+      } else if (modoBarras() === 'cambio') {
+        // Diferencia como en Sectores: una barra por programa, coloreada por la magnitud del
+        // cambio entre los dos gobiernos (ver pintarCambio en pintar(), arriba).
+        const [g1, g2] = gs;   // gs = gobs(): cronológico, el más viejo primero = base
+        const ds1 = new Map(porGob.find(([g]) => g === g1)[1].map((d) => [d.cat, d.valor]));
+        const ds2 = new Map(porGob.find(([g]) => g === g2)[1].map((d) => [d.cat, d.valor]));
+        let filas = [...new Set([...ds1.keys(), ...ds2.keys()])]
+          .map((cat) => ({ cat, v1: ds1.get(cat) || 0, v2: ds2.get(cat) || 0 }));
+        filas.sort((a, b) => (b.v1 + b.v2) - (a.v1 + a.v2));
+        if (filas.length > 12) { otros = filas.slice(12).map((f) => f.cat); filas = filas.slice(0, 12); }
+        const datos = filas.map((f) => {
+          const valor = f.v2 - f.v1;
+          const variacion = f.v1 > 0 ? valor / f.v1 : NaN;
+          const color = colorCambio([variacion])[0];
+          const tooltip = `<b>${Formato.esc(f.cat)}</b><br>${Formato.esc(g1)}: ${Formato.cop(f.v1)}<br>${Formato.esc(g2)}: ${Formato.cop(f.v2)}<br>` +
+            `Diferencia: ${Formato.cop(valor, 0, true)}<br>Variación: ${Formato.pct(variacion, 1, true)}`;
+          return { cat: f.cat, valor, color, tooltip };
+        });
+        contProgramas.append(Graficas.barrasCambio(datos, { formatear: (v) => Formato.cop(v, 0, true) }));
+        contProgramas.append(Mapa.leyenda(PAL_CAMBIO, ETIQ_CAMBIO, 'Magnitud de la variación'));
       } else {
-        const filas = porGob.flatMap(([g, ds]) => ds.map((d) => ({ cat: d.cat, serie: g, valor: d.valor })));
+        // «Totales» / «Cambio en % de participación»: una fila por programa con una barra por
+        // gobierno — mismo orden de dibujo que el resto de cajas (seriesVisual(): el más reciente
+        // primero), para que no quede al revés de Sectores/Fuentes/Vigencias.
+        const porGobMap = new Map(porGob);
+        const filas = seriesVisual().flatMap((g) =>
+          (porGobMap.get(g) || []).map((d) => ({ cat: d.cat, serie: g, valor: d.valor })));
         const tot = new Map(); filas.forEach((x) => tot.set(x.cat, (tot.get(x.cat) || 0) + x.valor));
         const orden = [...tot.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
         const top = orden.slice(0, 12); otros = orden.slice(12);
         const rango = new Map(top.map((c, i) => [c, i]));
         const datos = filas.filter((x) => top.includes(x.cat)).sort((a, b) => rango.get(a.cat) - rango.get(b.cat))
-          .concat(otros.length ? gs.map((g) => ({ cat: 'Otros', serie: g,
+          .concat(otros.length ? seriesVisual().map((g) => ({ cat: 'Otros', serie: g,
             valor: filas.filter((x) => otros.includes(x.cat) && x.serie === g).reduce((a, x) => a + x.valor, 0) })) : []);
         contProgramas.append(Graficas.barrasLista(datos, { pal: palSeries() }), Graficas.leyenda(seriesVisual(), palSeries()));
       }
