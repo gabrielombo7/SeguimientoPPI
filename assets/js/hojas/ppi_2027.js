@@ -41,6 +41,9 @@ const HojaPPI2027 = (() => {
 
   const entreGob = () => false;                  // esta hoja nunca compara gobiernos
 
+  // Catálogo de fuente_general SIN Privados (ver el comentario equivalente en hojas/visor.js).
+  const fuentesSinPrivados = () => Cubo.niveles('fuente_general').filter((c) => c !== 'Total' && c !== 'Privados');
+
   function gobs() { return [GOBIERNO]; }
 
   function indsDisp() {
@@ -84,7 +87,8 @@ const HojaPPI2027 = (() => {
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(),
-      fuente_general: est.sel.fuente || 'Total',
+      // Ver el comentario equivalente en hojas/visor.js: «Sin privados» filtra TODO el tablero.
+      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : 'Total'),
       fuente_fondo: est.sel.fondo || 'Total',
       // Ver el comentario equivalente en hojas/visor.js: cada nivel (Eje/Tema/Estrategia) fija el
       // SIGUIENTE a 'Total' salvo que haya algo elegido ahí (si no, cuenta el marginal Y sus hijos
@@ -251,9 +255,7 @@ const HojaPPI2027 = (() => {
           title: 'Descarga todas las filas de PPI 2027-2030, igual que en la base de Consulta (sin agregar)',
           onclick: descargarBase
         }, 'Descargar base de datos')
-      // zoom:true — los filtros SÍ conviene poder ampliarlos: en celular (o con la página larga)
-      // cuesta tenerlos todos a la vista a la vez para armar una selección.
-      ), { clase: 'card-filtros', zoom: true }));
+      ), { clase: 'card-filtros' }));
     }
 
     let token = 0;
@@ -286,7 +288,13 @@ const HojaPPI2027 = (() => {
         opciones: [{ valor: 'total', texto: 'Total' }, { valor: 'sin_privados', texto: 'Sin privados' },
                    { valor: 'especifica', texto: 'Específica' }],
         valor: est.vistaFuentes,
-        onCambio: (v) => { est.vistaFuentes = v; pintar(); }
+        // «Total»/«Sin privados» filtran TODO el tablero (ver baseQ): limpiar cualquier fuente
+        // puntual elegida antes de cambiar entre ellos, y actualizar() en vez de pintar().
+        onCambio: (v) => {
+          if (v !== 'especifica') est.sel.fuente = null;
+          est.vistaFuentes = v;
+          actualizar();
+        }
       }));
 
       envSectores.hidden = est.vistaSector !== 'sectores';
@@ -560,8 +568,10 @@ const HojaPPI2027 = (() => {
         UI.vaciar(contProgramas); return pistaP('No se pudieron cargar los programas', String(e.message || e));
       }
       if (mio !== tokProg) return;
-      const filtros = { sector: sectoresSel, fuente: est.sel.fuente, departamento: est.sel.departamento,
-                         vigencia: est.sel.vigencia };
+      // fuente: igual que baseQ() — «Sin privados» filtra también los programas, no solo el cubo.
+      const filtros = { sector: sectoresSel,
+                         fuente: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : null),
+                         departamento: est.sel.departamento, vigencia: est.sel.vigencia };
       const ds = Programas.agregar(GOBIERNO, filtros, Medida);
       UI.vaciar(contProgramas);
       if (!ds.length || (ds.length === 1 && ds[0].cat === 'Sin programa')) {

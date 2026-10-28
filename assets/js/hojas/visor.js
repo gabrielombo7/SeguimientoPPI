@@ -50,6 +50,13 @@ const HojaVisor = (() => {
 
   const entreGob = () => est.ambito === 'Entre gobiernos';
 
+  // Catálogo de fuente_general SIN Privados, para la vista «Sin privados»: se filtra por las
+  // categorías finas que SÍ existen (permitido — cubo.js:niveles ya trae el catálogo completo),
+  // nunca se deriva sumando un nivel MÁS FINO que fuente_general (eso sí rompería el total con un
+  // gobierno cerrado — ver README «El cubo es cerrado»). Verificado en consola para 2027-2030 y
+  // 2023-2026: la suma de estas categorías coincide con el total (menos Privados cuando aplica).
+  const fuentesSinPrivados = () => Cubo.niveles('fuente_general').filter((c) => c !== 'Total' && c !== 'Privados');
+
   // Gobiernos activos, en orden CRONOLÓGICO (el más viejo primero = base del %)
   function gobs() {
     const g = Cubo.meta.gobiernos.filter((x) => est.gobiernos.includes(x));
@@ -141,7 +148,10 @@ const HojaVisor = (() => {
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(gobierno),
-      fuente_general: est.sel.fuente || 'Total',
+      // Sin selección explícita, la vista «Sin privados» del header de Fuentes actúa como filtro
+      // de TODO el tablero (no solo de su propia caja): KPIs, Sectores, Vigencias y el mapa quedan
+      // sin Privados hasta que se elija una fuente puntual o se pase a «Total».
+      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : 'Total'),
       fuente_fondo: est.sel.fondo || 'Total',
       // linea1 (Eje) · linea2 (Tema) · linea3 (Estrategia): CADA nivel tiene su propia fila marginal
       // (el nivel siguiente en 'Total') que ya trae su gran total — y ADEMÁS cada hijo vive en su
@@ -407,10 +417,56 @@ const HojaVisor = (() => {
               opciones: ['Totales', 'Cambio en totales', 'Cambio en % de participación'], valor: vista(),
               onCambio: (v) => { est.vista = v; pintarFiltros(); actualizar(); }
             })
-          : null
-      // zoom:true — los filtros SÍ conviene poder ampliarlos: en celular (o con la página larga)
-      // cuesta tenerlos todos a la vista a la vez para armar una selección.
-      ), { clase: 'card-filtros', zoom: true }));
+          : null,
+        UI.h('hr', { class: 'divisor' }),
+        // Filtros adicionales: las mismas dimensiones que ya se eligen con un clic en las gráficas
+        // (Fuentes, Sectores…), pero por si en celular (o con la página larga) cuesta llegar hasta
+        // la caja correspondiente para hacer ese clic.
+        UI.popover('Filtros adicionales', 'Filtros adicionales', () => UI.h('div', { class: 'campo' },
+          filtroDim('Fuente', 'fuente_general', 'fuente'),
+          filtroFondo(),
+          filtroDim('Sector', 'sector', 'sector', true),
+          filtroDim('Departamento', 'departamento', 'departamento', true)))
+      ), { clase: 'card-filtros' }));
+    }
+
+    // Picker de una dimensión del cubo, para «Filtros adicionales» — misma selección que un clic
+    // en la gráfica correspondiente (est.sel[clave]), solo que desde un desplegable.
+    function filtroDim(etiqueta, col, clave, buscar) {
+      const ops = Cubo.niveles(col).filter((v) => v !== 'Total');
+      // Igual que en el panel de Medida: en per cápita el departamento es de UNO a la vez.
+      if (clave === 'departamento' && Medida.percapita) {
+        return UI.picker({
+          etiqueta: etiqueta + ' (uno)', opciones: ['Todos'].concat(ops), buscar,
+          valor: (est.sel.departamento && est.sel.departamento[0]) || 'Todos',
+          onCambio: (v) => { est.sel.departamento = v === 'Todos' ? null : [v]; actualizar(); }
+        });
+      }
+      return UI.picker({
+        etiqueta, opciones: ops, multiple: true, buscar,
+        valor: est.sel[clave] || [], textoTodas: 'Todas',
+        onCambio: (v) => { est.sel[clave] = v.length ? v : null; actualizar(); }
+      });
+    }
+
+    // «Fuente específica» solo existe dentro de UNA fuente general elegida (ver sincronizarFondo):
+    // el desplegable se habilita solo entonces, con el catálogo real de esa fuente (no una lista
+    // fija — fuente_fondo tiene nombres que se repiten entre fuentes distintas).
+    function filtroFondo() {
+      const f = est.sel.fuente;
+      if (!f || f.length !== 1) {
+        return UI.h('p', { class: 'texto-suave' }, 'Elija una sola fuente arriba para habilitar este filtro.');
+      }
+      const cats = new Set();
+      series().forEach((s) => {
+        Cubo.agregar(serieQ(s, { fuente_general: f, fuente_fondo: DES }), 'fuente_fondo')
+          .filter((d) => d.valor > 0).forEach((d) => cats.add(d.cat));
+      });
+      return UI.picker({
+        etiqueta: 'Fuente específica', opciones: [...cats].sort(), multiple: true, buscar: true,
+        valor: est.sel.fondo || [], textoTodas: 'Todas',
+        onCambio: (v) => { est.sel.fondo = v.length ? v : null; actualizar(); }
+      });
     }
 
     // --- Actualización de todas las vistas -------------------------------------
@@ -445,7 +501,14 @@ const HojaVisor = (() => {
         opciones: [{ valor: 'total', texto: 'Total' }, { valor: 'sin_privados', texto: 'Sin privados' },
                    { valor: 'especifica', texto: 'Específica' }],
         valor: est.vistaFuentes,
-        onCambio: (v) => { est.vistaFuentes = v; pintar(); }
+        // «Total»/«Sin privados» son filtros de TODO el tablero (ver baseQ): cambiar entre ellos
+        // limpia cualquier fuente puntual elegida antes, para no dejar un filtro viejo escondido
+        // debajo del nuevo — por eso actualizar() (re-pinta con el corte ya cargado), no pintar().
+        onCambio: (v) => {
+          if (v !== 'especifica') est.sel.fuente = null;
+          est.vistaFuentes = v;
+          actualizar();
+        }
       }));
 
       envSectores.hidden = est.vistaSector !== 'sectores';
@@ -912,7 +975,10 @@ const HojaVisor = (() => {
         UI.vaciar(contProgramas); return pistaP('No se pudieron cargar los programas', String(e.message || e));
       }
       if (mio !== tokProg) return;               // llegó una selección más nueva
-      const filtros = (g) => ({ sector: sectoresSel, fuente: est.sel.fuente, departamento: est.sel.departamento,
+      // fuente: igual que baseQ() — «Sin privados» filtra también los programas, no solo el cubo.
+      const filtros = (g) => ({ sector: sectoresSel,
+                                fuente: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : null),
+                                departamento: est.sel.departamento,
                                 vigencia: est.sel.vigencia ? vigSel(g) : null });      // «Año k» → año calendario de cada gobierno
       const porGob = gs.map((g) => [g, Programas.agregar(g, filtros(g), Medida)]);
       UI.vaciar(contProgramas);
