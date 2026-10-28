@@ -565,7 +565,9 @@ const HojaVisor = (() => {
     // también desagregado — igual que pintarLineas()). Tema y Estrategia ya son únicos por sí
     // solos (incluyen a su padre, ver baseQ): no hace falta elegir antes el Eje para habilitarlos.
     function lineasPND() {
-      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null }), ['linea1', 'linea2', 'linea3']);
+      // fuente_general explícito: ver el comentario igual en pintarLineas() — el marginal de Tema
+      // no existe filtrando por la lista de «Sin privados», solo por el 'Total' real o una fuente puntual.
+      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null, fuente_general: est.sel.fuente || 'Total' }), ['linea1', 'linea2', 'linea3']);
       const n1 = new Set(), n2 = new Set(), n3 = new Set();
       filas.forEach(({ cats, valor }) => {
         if (!(valor > 0)) return;
@@ -1271,7 +1273,12 @@ const HojaVisor = (() => {
 
       // Una sola consulta trae nivel 1 (linea2 == Total), nivel 2 (linea2 ≠ Total, linea3 == Total)
       // y nivel 3 —Estrategia— (linea3 ≠ Total).
-      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null }), ['linea1', 'linea2', 'linea3']);
+      // fuente_general explícito: el cubo es cerrado y el marginal de nivel 2 (Tema, con linea3 en
+      // 'Total') no es la suma de las filas finas — filtrar por la LISTA de fuentes de «Sin
+      // privados» (el default de baseQ) lo dejaba en 0 filas, aunque Eje y Estrategia sí quedaban.
+      // Con una fuente puntual elegida sí se respeta (igual que antes); sin ninguna, se usa el
+      // marginal 'Total' real en vez de esa lista.
+      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null, fuente_general: est.sel.fuente || 'Total' }), ['linea1', 'linea2', 'linea3']);
       const n1 = new Map(), n2 = new Map(), n3 = new Map();
       filas.forEach(({ cats, valor }) => {
         const [c1, c2, c3] = cats;

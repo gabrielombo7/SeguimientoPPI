@@ -651,8 +651,10 @@ const HojaPPI2027 = (() => {
       }
 
       // Una sola consulta trae nivel 1 (linea2 == Total), nivel 2 (linea2 ≠ Total, linea3 == Total)
-      // y nivel 3 —Estrategia— (linea3 ≠ Total). Ver el comentario equivalente en hojas/visor.js.
-      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null }), ['linea1', 'linea2', 'linea3']);
+      // y nivel 3 —Estrategia— (linea3 ≠ Total). fuente_general explícito: el marginal de Tema no
+      // existe filtrando por la lista de «Sin privados» (ver el comentario equivalente en
+      // hojas/visor.js), solo por el 'Total' real o una fuente puntual elegida.
+      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null, fuente_general: est.sel.fuente || 'Total' }), ['linea1', 'linea2', 'linea3']);
       const n1 = new Map(), n2 = new Map(), n3 = new Map();
       filas.forEach(({ cats, valor }) => {
         const [c1, c2, c3] = cats;
