@@ -40,7 +40,8 @@ const HojaVisor = (() => {
     ambito: 'Por gobierno',
     gobiernos: [], indicadores: ['Planeado PPI'],
     vista: 'Totales',
-    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null },
+    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, entidad: null, programa: null },
+    filtrosOpen: false,     // «Filtros» (adicionales) — toggle inline, no es un filtro en sí
     fondoDe: null,          // fuente general a la que pertenece la fuente específica elegida
     // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
     vistaFuentes: 'sin_privados',     // 'total' | 'sin_privados' | 'especifica' — por defecto sin Privados
@@ -309,6 +310,15 @@ const HojaVisor = (() => {
     const contLeyenda = UI.h('div', {});
     const contLineas = UI.h('div', {});
 
+    // Filtros dependientes (ver «Filtros» en pintarFiltros): Fuente específica y Entidad solo
+    // existen con una fuente puntual elegida, Programa cambia de catálogo con el sector. Nodos
+    // persistentes para poder repintar SOLO estos 3 cuando cambia la fuente/el sector — si se
+    // reconstruyera todo el bloque «Filtros» (pintarFiltros entero) se cerraría de golpe
+    // cualquier desplegable de selección múltiple que el usuario tuviera abierto a medio marcar.
+    const contFiltroFondo = UI.h('div', {});
+    const contFiltroEntidad = UI.h('div', {});
+    const contFiltroPrograma = UI.h('div', {});
+
     // Envoltorios de las dos cajas con selector de vista (Fuentes↔Fuente específica,
     // Sectores↔Programas↔Entidad): cada contenedor de contenido sigue siendo el mismo de
     // siempre (pintar() los sigue llenando exactamente igual), solo se oculta el que no
@@ -419,20 +429,40 @@ const HojaVisor = (() => {
             })
           : null,
         UI.h('hr', { class: 'divisor' }),
-        // Filtros adicionales: las mismas dimensiones que ya se eligen con un clic en las gráficas
-        // (Fuentes, Sectores…), pero por si en celular (o con la página larga) cuesta llegar hasta
-        // la caja correspondiente para hacer ese clic.
-        UI.popover('Filtros adicionales', 'Filtros adicionales', () => UI.h('div', { class: 'campo' },
-          filtroDim('Fuente', 'fuente_general', 'fuente'),
-          filtroFondo(),
-          filtroDim('Sector', 'sector', 'sector', true),
-          filtroDim('Departamento', 'departamento', 'departamento', true)))
+        // «Filtros»: las mismas dimensiones que ya se eligen con un clic en las gráficas (Fuentes,
+        // Sectores…), pero por si en celular (o con la página larga) cuesta llegar hasta la caja
+        // correspondiente para hacer ese clic. Toggle inline (no un popover flotante ni otra
+        // pestaña): un botón que despliega el bloque hacia abajo, dentro del mismo panel.
+        UI.h('button', {
+          type: 'button', class: 'btn-toggle-filtros', 'aria-expanded': String(est.filtrosOpen),
+          onclick: () => { est.filtrosOpen = !est.filtrosOpen; pintarFiltros(); }
+        }, 'Filtros', UI.h('span', { class: 'icono-toggle', 'aria-hidden': 'true' }, est.filtrosOpen ? '▴' : '▾')),
+        est.filtrosOpen ? UI.h('div', { class: 'filtros-extra' },
+          filtroDim('Fuente', 'fuente_general', 'fuente', false, [pintarFiltroFondo, pintarFiltroEntidad]),
+          contFiltroFondo,
+          filtroVigencia(),
+          filtroDim('Sector', 'sector', 'sector', true, [pintarFiltroPrograma]),
+          contFiltroPrograma,
+          contFiltroEntidad,
+          filtroDim('Departamento', 'departamento', 'departamento', true),
+          filtroLinea('Eje', 'linea'),
+          filtroLinea('Tema', 'tema'),
+          filtroLinea('Estrategia', 'estrategia')
+        ) : null
       ), { clase: 'card-filtros' }));
+      // Los 3 contenedores de arriba son persistentes (ver su declaración en render()): si el
+      // bloque está desplegado, se llenan aquí (primer render o tras un cambio «grande», p. ej.
+      // de gobierno) y además cada vez que cambia su dimensión de la que dependen (ver filtroDim).
+      if (est.filtrosOpen) { pintarFiltroFondo(); pintarFiltroEntidad(); pintarFiltroPrograma(); }
     }
 
-    // Picker de una dimensión del cubo, para «Filtros adicionales» — misma selección que un clic
-    // en la gráfica correspondiente (est.sel[clave]), solo que desde un desplegable.
-    function filtroDim(etiqueta, col, clave, buscar) {
+    // Picker de una dimensión del cubo, para «Filtros» — misma selección que un clic en la gráfica
+    // correspondiente (est.sel[clave]), solo que desde un desplegable. No llama pintarFiltros() al
+    // cambiar (solo actualizar()): si lo hiciera, cada casilla marcada en un picker de selección
+    // múltiple reconstruiría el panel entero y se cerraría el propio desplegable a medio marcar.
+    // `onDep`: repintados puntuales de OTROS pickers que dependen de este (ver contFiltroFondo
+    // arriba) — esos sí son seguros de disparar en cada cambio porque no tocan este picker.
+    function filtroDim(etiqueta, col, clave, buscar, onDep) {
       const ops = Cubo.niveles(col).filter((v) => v !== 'Total');
       // Igual que en el panel de Medida: en per cápita el departamento es de UNO a la vez.
       if (clave === 'departamento' && Medida.percapita) {
@@ -445,9 +475,15 @@ const HojaVisor = (() => {
       return UI.picker({
         etiqueta, opciones: ops, multiple: true, buscar,
         valor: est.sel[clave] || [], textoTodas: 'Todas',
-        onCambio: (v) => { est.sel[clave] = v.length ? v : null; actualizar(); }
+        onCambio: (v) => { est.sel[clave] = v.length ? v : null; (onDep || []).forEach((f) => f()); actualizar(); }
       });
     }
+
+    // Repintan SOLO su propio contenedor persistente (ver contFiltro* en render()) — a diferencia
+    // de pintarFiltros() entero, no interrumpen ningún OTRO picker que el usuario tenga abierto.
+    function pintarFiltroFondo() { UI.vaciar(contFiltroFondo).append(filtroFondo()); }
+    function pintarFiltroEntidad() { UI.vaciar(contFiltroEntidad).append(filtroEntidad()); }
+    function pintarFiltroPrograma() { UI.vaciar(contFiltroPrograma).append(filtroPrograma()); }
 
     // «Fuente específica» solo existe dentro de UNA fuente general elegida (ver sincronizarFondo):
     // el desplegable se habilita solo entonces, con el catálogo real de esa fuente (no una lista
@@ -455,7 +491,7 @@ const HojaVisor = (() => {
     function filtroFondo() {
       const f = est.sel.fuente;
       if (!f || f.length !== 1) {
-        return UI.h('p', { class: 'texto-suave' }, 'Elija una sola fuente arriba para habilitar este filtro.');
+        return UI.h('p', { class: 'texto-suave' }, 'Fuente específica: elija una sola fuente arriba para habilitarlo.');
       }
       const cats = new Set();
       series().forEach((s) => {
@@ -466,6 +502,98 @@ const HojaVisor = (() => {
         etiqueta: 'Fuente específica', opciones: [...cats].sort(), multiple: true, buscar: true,
         valor: est.sel.fondo || [], textoTodas: 'Todas',
         onCambio: (v) => { est.sel.fondo = v.length ? v : null; actualizar(); }
+      });
+    }
+
+    // «Entidad (PGN)» solo existe con PGN como única fuente elegida (ver sincronizarEntidad).
+    function filtroEntidad() {
+      const f = est.sel.fuente;
+      if (!f || f.length !== 1 || f[0] !== 'PGN') {
+        return UI.h('p', { class: 'texto-suave' }, 'Entidad (PGN): elija solo PGN en Fuente arriba para habilitarlo.');
+      }
+      const cats = new Set();
+      series().forEach((s) => {
+        Cubo.agregar(serieQ(s, { entidad: DES }), 'entidad').filter((d) => d.valor > 0).forEach((d) => cats.add(d.cat));
+      });
+      return UI.picker({
+        etiqueta: 'Entidad (PGN)', opciones: [...cats].sort(), multiple: true, buscar: true,
+        valor: est.sel.entidad || [], textoTodas: 'Todas',
+        onCambio: (v) => { est.sel.entidad = v.length ? v : null; actualizar(); }
+      });
+    }
+
+    // Vigencia: catálogo distinto según el ámbito — años calendario reales «Por gobierno»
+    // (vigenciasDe, igual que el eje del gráfico), o «Año k» del periodo «Entre gobiernos» (no hay
+    // un calendario común entre dos PPI; ver el comentario de porDim/vigencia más abajo).
+    function filtroVigencia() {
+      const ops = entreGob()
+        ? Array.from({ length: Math.max(1, ...gobs().map((g) => vigenciasDe(g).length)) }, (_, i) => 'Año ' + (i + 1))
+        : vigenciasDe(gobs()[0]);
+      return UI.picker({
+        etiqueta: 'Vigencia', opciones: ops, multiple: true, buscar: ops.length > 10,
+        valor: est.sel.vigencia || [], textoTodas: 'Todas',
+        onCambio: (v) => { est.sel.vigencia = v.length ? v : null; actualizar(); }
+      });
+    }
+
+    // Programa: catálogo de los programas visibles ahora mismo en la caja Programas (mismos
+    // filtros: sector, fuente, departamento, vigencia — ver pintarProgramas).
+    function filtroPrograma() {
+      const sectoresSel = est.sel.sector || [];
+      const gs = gobs();
+      const cats = new Set();
+      gs.forEach((g) => {
+        Programas.agregar(g, {
+          sector: sectoresSel.length ? sectoresSel : null,
+          fuente: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : null),
+          departamento: est.sel.departamento,
+          vigencia: est.sel.vigencia ? vigSel(g) : null
+        }, Medida).forEach((d) => { if (d.cat !== 'Sin programa') cats.add(d.cat); });
+      });
+      const ops = [...cats].sort();
+      if (!ops.length) return UI.h('p', { class: 'texto-suave' }, 'Programa: sin programas para esta combinación (o aún cargando).');
+      return UI.picker({
+        etiqueta: 'Programa', opciones: ops, multiple: true, buscar: true,
+        valor: est.sel.programa || [], textoTodas: 'Todos',
+        onCambio: (v) => { est.sel.programa = v.length ? v : null; actualizar(); }
+      });
+    }
+
+    // Eje/Tema/Estrategia: códigos propios del PND de CADA gobierno — solo existen «Por gobierno»
+    // con «Planeado PPI» (ver pintarLineas). Una sola consulta trae los 3 niveles (linea2/linea3 en
+    // 'Total' no comparten fila con su desglose fino, así que cada nivel necesita el de ARRIBA
+    // también desagregado — igual que pintarLineas()). Tema y Estrategia ya son únicos por sí
+    // solos (incluyen a su padre, ver baseQ): no hace falta elegir antes el Eje para habilitarlos.
+    function lineasPND() {
+      const filas = Cubo.agregar(serieQ('Planeado PPI', { linea1: DES, linea2: null, linea3: null }), ['linea1', 'linea2', 'linea3']);
+      const n1 = new Set(), n2 = new Set(), n3 = new Set();
+      filas.forEach(({ cats, valor }) => {
+        if (!(valor > 0)) return;
+        const [c1, c2, c3] = cats;
+        if (c2 === 'Total') n1.add(c1);
+        else if (c3 === 'Total') n2.add(c2);
+        else n3.add(c3);
+      });
+      return { n1, n2, n3 };
+    }
+    function filtroLinea(etiqueta, clave) {
+      if (entreGob() || series().length !== 1 || series()[0] !== 'Planeado PPI') {
+        return UI.h('p', { class: 'texto-suave' },
+          `${etiqueta}: solo con «Planeado PPI», un gobierno a la vez (no «Entre gobiernos»).`);
+      }
+      const gob = gobs()[0];
+      const { n1, n2, n3 } = lineasPND();
+      const cats = [...(clave === 'linea' ? n1 : clave === 'tema' ? n2 : n3)];
+      if (!cats.length) return UI.h('p', { class: 'texto-suave' }, `${etiqueta}: sin datos para este gobierno.`);
+      return UI.picker({
+        etiqueta, opciones: cats.map((c) => ({ valor: c, texto: Cubo.etiqLinea(gob, c) })), multiple: true, buscar: true,
+        valor: est.sel[clave] || [], textoTodas: 'Todas',
+        onCambio: (v) => {
+          est.sel[clave] = v.length ? v : null;
+          if (clave === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
+          if (clave === 'tema') est.sel.estrategia = null;
+          actualizar();
+        }
       });
     }
 
@@ -612,18 +740,22 @@ const HojaVisor = (() => {
         Eje: est.sel.linea ? est.sel.linea.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
         Tema: est.sel.tema ? est.sel.tema.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
         Estrategia: est.sel.estrategia ? est.sel.estrategia.map((c) => Cubo.etiqLinea(gobs()[0], c)) : null,
-        Entidad: est.sel.entidad
+        Entidad: est.sel.entidad, Programa: est.sel.programa
       };
-      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia', Entidad: 'entidad' };
+      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia', Entidad: 'entidad', Programa: 'programa' };
+      // pintarFiltros() además de actualizar(): si el bloque «Filtros» está desplegado, sus
+      // desplegables (que leen est.sel directo) quedarían mostrando un valor viejo si no se
+      // repinta — a diferencia de los propios desplegables (ver filtroDim), quitar un chip no
+      // interrumpe ninguna selección múltiple a medio marcar, así que aquí sí es seguro.
       UI.vaciar(chips).append(UI.chips(etiquetas,
         (dim) => {
           est.sel[claveDim[dim]] = null;
           if (claveDim[dim] === 'fuente') { est.sel.fondo = null; est.sel.entidad = null; }
           if (claveDim[dim] === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
           if (claveDim[dim] === 'tema') est.sel.estrategia = null;
-          actualizar();
+          pintarFiltros(); actualizar();
         },
-        () => { limpiarSel(); actualizar(); }));
+        () => { limpiarSel(); pintarFiltros(); actualizar(); }));
 
       // --- Datos por dimensión, según el modo
       //   'simple'  → una serie
@@ -964,10 +1096,6 @@ const HojaVisor = (() => {
       if (modoBarras() === 'aviso') return UI.vaciar(contProgramas).append(UI.estadoVacio(MSG_UNGOB, DET_UNGOB));
       if (inds()[0] !== 'Planeado PPI' || (!entreGob() && modo() !== 'simple')) return pistaP('Solo para «Planeado PPI»', 'El desglose por programa existe solo para la programación: deje elegido solo ese indicador.');
       if (Medida.percapita) return pistaP('Sin per cápita por programa', 'No hay población por programa: use Totales o % del PIB.');
-      if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas.');
-      if (sectoresSel.length > 1) return pistaP(`Hay ${sectoresSel.length} sectores seleccionados`, 'El desglose es de un solo sector: deje uno elegido en «Sectores».');
-      if (est.sel.linea) return pistaP('Sin cruce con las líneas del PND', 'El desglose por programa no se cruza con las líneas del PND: quite la línea elegida.');
-      if (est.sel.fondo) return pistaP('Sin cruce con la fuente específica', 'El desglose por programa no se cruza con la fuente específica: quite la elegida en «Fuente específica».');
       const gs = gobs();
       contProgramas.append(UI.cargando('Cargando los programas…'));
       try { await Promise.all(gs.map((g) => Programas.cargar(g))); } catch (e) {
@@ -975,8 +1103,9 @@ const HojaVisor = (() => {
         UI.vaciar(contProgramas); return pistaP('No se pudieron cargar los programas', String(e.message || e));
       }
       if (mio !== tokProg) return;               // llegó una selección más nueva
-      // fuente: igual que baseQ() — «Sin privados» filtra también los programas, no solo el cubo.
-      const filtros = (g) => ({ sector: sectoresSel,
+      // Sin sector elegido se suman TODOS; con varios, los de esos varios (antes bloqueaba ambos
+      // casos). fuente: igual que baseQ() — «Sin privados» filtra también los programas.
+      const filtros = (g) => ({ sector: sectoresSel.length ? sectoresSel : null,
                                 fuente: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : null),
                                 departamento: est.sel.departamento,
                                 vigencia: est.sel.vigencia ? vigSel(g) : null });      // «Año k» → año calendario de cada gobierno
@@ -986,12 +1115,15 @@ const HojaVisor = (() => {
       if (porGob.every(([, ds]) => solo(ds))) {
         return pistaP('Sin programas para esta combinación', gs.length > 1 ? 'Ningún gobierno elegido trae programas para el sector y los filtros elegidos.' : 'Este gobierno no trae programas para el sector y los filtros elegidos.');
       }
-      contProgramas.append(UI.h('div', { class: 'fuente-esp-de' }, 'Sector:', UI.h('span', {}, sectoresSel[0])));
+      const etiquetaSector = !sectoresSel.length ? 'Todos los sectores'
+        : sectoresSel.length === 1 ? sectoresSel[0] : `${sectoresSel.length} sectores`;
+      contProgramas.append(UI.h('div', { class: 'fuente-esp-de' }, 'Sector:', UI.h('span', {}, etiquetaSector)));
+      const alClic = (c) => { alternar('programa', c); actualizar(); };
       let otros = [];
       if (gs.length === 1) {
         const r = Graficas.topOtros(porGob[0][1], 12);
         otros = r.otros;
-        contProgramas.append(Graficas.barrasLista(r.datos, {}));
+        contProgramas.append(Graficas.barrasLista(r.datos, { onClick: alClic, seleccion: est.sel.programa }));
       } else if (modoBarras() === 'cambio') {
         // Diferencia como en Sectores: una barra por programa, coloreada por la magnitud del
         // cambio entre los dos gobiernos (ver pintarCambio en pintar(), arriba).
@@ -1010,7 +1142,7 @@ const HojaVisor = (() => {
             `Diferencia: ${Formato.cop(valor, 0, true)}<br>Variación: ${Formato.pct(variacion, 1, true)}`;
           return { cat: f.cat, valor, color, tooltip };
         });
-        contProgramas.append(Graficas.barrasCambio(datos, { formatear: (v) => Formato.cop(v, 0, true) }));
+        contProgramas.append(Graficas.barrasCambio(datos, { onClick: alClic, seleccion: est.sel.programa, formatear: (v) => Formato.cop(v, 0, true) }));
         contProgramas.append(Mapa.leyenda(PAL_CAMBIO, ETIQ_CAMBIO, 'Magnitud de la variación'));
       } else {
         // «Totales» / «Cambio en % de participación»: una fila por programa con una barra por
@@ -1026,13 +1158,28 @@ const HojaVisor = (() => {
         const datos = filas.filter((x) => top.includes(x.cat)).sort((a, b) => rango.get(a.cat) - rango.get(b.cat))
           .concat(otros.length ? seriesVisual().map((g) => ({ cat: 'Otros', serie: g,
             valor: filas.filter((x) => otros.includes(x.cat) && x.serie === g).reduce((a, x) => a + x.valor, 0) })) : []);
-        contProgramas.append(Graficas.barrasLista(datos, { pal: palSeries() }), Graficas.leyenda(seriesVisual(), palSeries()));
+        contProgramas.append(Graficas.barrasLista(datos, { pal: palSeries(), onClick: alClic, seleccion: est.sel.programa }),
+          Graficas.leyenda(seriesVisual(), palSeries()));
       }
       if (otros.length) {
         contProgramas.append(UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${otros.length}): `), otros.join(', ')));
       }
+      // Los programas (programas.js) viven en un shard aparte del cubo, al grano vigencia × fuente
+      // general × sector × departamento × programa — SIN fuente específica ni líneas del PND, así
+      // que esos filtros no tienen con qué cruzar aquí (antes esto bloqueaba toda la caja; ahora se
+      // avisa y se sigue mostrando con lo que sí aplica).
+      const sinCruce = [];
+      if (est.sel.fondo) sinCruce.push('la fuente específica');
+      if (est.sel.linea) sinCruce.push('el Eje');
+      if (est.sel.tema) sinCruce.push('el Tema');
+      if (est.sel.estrategia) sinCruce.push('la Estrategia');
+      if (est.sel.entidad) sinCruce.push('la entidad');
+      if (sinCruce.length) {
+        contProgramas.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
+          `Nota: los programas no tienen ${sinCruce.join(', ')} como dato propio — ese filtro no se aplica en esta caja (sí respeta sector, fuente, departamento y vigencia).`));
+      }
       contProgramas.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
-        'Informativo: el cubo no cruza programas con las demás dimensiones, así que las barras no filtran. Respeta la fuente, el departamento y la vigencia elegidos.' +
+        'Clic en una barra para resaltarla (es informativo dentro de esta caja: el cubo no tiene programa como dimensión, así que no filtra las demás).' +
         (gs.length > 1 ? ' Los gobiernos se comparan por nombre de programa: un mismo programa puede llamarse distinto entre gobiernos (en 2011-2018 la numeración y los nombres son otros).' : '')));
     }
 

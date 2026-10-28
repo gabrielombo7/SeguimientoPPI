@@ -310,6 +310,18 @@ a { color: inherit; }
 }
 .popover-dnp .popover-titulo { font-size: .8rem; font-weight: 800; color: var(--dnp-primario-osc); }
 
+/* «Filtros» del Visor: toggle inline (no un popover flotante), despliega el bloque hacia abajo
+   dentro del mismo panel — mismo estilo de botón que .btn-filtros-adic. */
+.btn-toggle-filtros {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: .5rem .75rem; background: var(--dnp-primario-claro); color: var(--dnp-tinta);
+  border: 1px solid var(--dnp-borde); border-radius: .6rem;
+  font-size: .82rem; font-weight: 600; cursor: pointer;
+}
+.btn-toggle-filtros:hover { border-color: var(--dnp-primario); color: var(--dnp-primario); }
+.btn-toggle-filtros .icono-toggle { font-size: .7rem; }
+.filtros-extra { display: flex; flex-direction: column; gap: .6rem; margin-top: .6rem; }
+
 .divisor { border: 0; border-top: 1px solid var(--dnp-borde); margin: .35rem 0; }
 .btn-primario {
   width: 100%; padding: .5rem .75rem; cursor: pointer;
