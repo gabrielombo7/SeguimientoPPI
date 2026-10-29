@@ -36,7 +36,8 @@ const HojaPPI2027 = (() => {
     // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
     vistaFuentes: 'sin_privados',     // 'total' | 'sin_privados' | 'especifica' — por defecto sin Privados
                                        // (es más de la mitad del PPI y tapa el resto de la torta)
-    vistaSector: 'sectores'           // 'sectores' | 'programas'
+    vistaSector: 'sectores',          // 'sectores' | 'programas'
+    vistaLinea: 'eje'                 // 'eje' | 'tema' | 'estrategia' — qué nivel del PND se muestra
   };
 
   const entreGob = () => false;                  // esta hoja nunca compara gobiernos
@@ -659,65 +660,87 @@ const HojaPPI2027 = (() => {
       filas.forEach(({ cats, valor }) => {
         const [c1, c2, c3] = cats;
         if (c2 === 'Total') { n1.set(c1, (n1.get(c1) || 0) + valor); return; }
+        // «Sin categoría» (sin línea PND): el cubo repite el MISMO código en los 3 niveles en vez de
+        // dejar Tema/Estrategia en 'Total' — un código real nunca se repite igual a su padre (el de
+        // Tema siempre tiene más dígitos que el de su Eje), así que esto solo pasa en «Sin categoría».
+        // No es un Tema ni una Estrategia real: se deja fuera de n2/n3 (si entrara, dominaría esas
+        // vistas — ver «Cómo se actualiza» — y en «Sin categoría» ya se ve agregado, a nivel Eje).
+        if (c2 === c1) return;
         if (c3 === 'Total') {
           if (!n2.has(c1)) n2.set(c1, new Map());
           n2.get(c1).set(c2, (n2.get(c1).get(c2) || 0) + valor);
           return;
         }
+        if (c3 === c2) return;
         const kTema = c1 + '|' + c2;
         if (!n3.has(kTema)) n3.set(kTema, new Map());
         n3.get(kTema).set(c3, (n3.get(kTema).get(c3) || 0) + valor);
       });
 
-      const COLS_MONTO = (titulo) => [
-        { campo: 'valor', titulo, num: true, ancho: titulo ? '150px' : undefined, render: (v) => Formato.cop(v) },
-        { campo: 'pct', titulo: titulo ? '% del total' : '', num: true, ancho: titulo ? '100px' : undefined, render: (v) => Formato.pct(v) }
-      ];
-      const tablaHijos = (hijos, padreValor, dim, tituloCol, detalleHijo) => {
-        const filas = [...hijos.entries()].sort((a, b) => b[1] - a[1]).map(([codigo, valor]) => ({
-          codigo, linea: Cubo.etiqLinea(GOBIERNO, codigo), valor, pct: padreValor > 0 ? valor / padreValor : null
-        }));
-        return UI.tabla(filas, [{ campo: 'linea', titulo: tituloCol }, ...COLS_MONTO()], {
-          sinPaginacion: true,
-          onClickFila: (f) => { alternar(dim, f.codigo); actualizar(); },
-          filaSel: (f) => est.sel[dim] && est.sel[dim].includes(f.codigo),
-          detalle: detalleHijo
-        });
+      // «Sin privados» usó 'Total' arriba (no la lista) para no perder el marginal de Tema — eso deja
+      // a Privados mezclado en «Sin categoría» (su único linea1, al no tener línea PND propia: ver el
+      // aviso de cobertura). Se resta aparte su aporte a ese nodo para que «Sin categoría» no cuente a
+      // Privados cuando la vista activa es «Sin privados» (antes se colaba completo ahí — bug
+      // reportado). Solo hace falta a nivel Eje (n1): Tema/Estrategia ya quedan fuera arriba.
+      if (!est.sel.fuente && est.vistaFuentes === 'sin_privados') {
+        const totPriv = Cubo.total(Object.assign({}, serieQ('Planeado PPI'), { fuente_general: ['Privados'], linea1: 'Total', linea2: 'Total', linea3: 'Total' }));
+        for (const [c1, v] of n1) {
+          if (c1 !== 'Sin categoría') continue;
+          const resto = v - totPriv;
+          if (resto > 0) n1.set(c1, resto); else n1.delete(c1);
+        }
+      }
+
+      // --- Selector Eje/Tema/Estrategia: un solo nivel a la vez (UI.grupoBotones arriba de la caja,
+      // igual patrón que Fuentes/Sectores). Tema y Estrategia se aplanan —sus códigos ya son únicos
+      // por sí solos, ver el comentario de lineasPND() en hojas/visor.js— y se muestran top-N + Otros
+      // como Sectores: con hasta ~60 estrategias una dona sería ilegible, así que solo Eje (6-7
+      // categorías) va en dona; Tema (hasta ~26) y Estrategia en barras.
+      const ETQ_NIVEL = { eje: 'Eje', tema: 'Tema', estrategia: 'Estrategia' };
+      const CLAVE_NIVEL = { eje: 'linea', tema: 'tema', estrategia: 'estrategia' };
+      const aplanar = (mapaDeMapas) => {
+        const m = new Map();
+        for (const hijos of mapaDeMapas.values()) for (const [codigo, valor] of hijos) m.set(codigo, (m.get(codigo) || 0) + valor);
+        return m;
       };
+      const nivel = est.vistaLinea;
+      const mapaNivel = nivel === 'eje' ? n1 : nivel === 'tema' ? aplanar(n2) : aplanar(n3);
+      const clave = CLAVE_NIVEL[nivel];
+      const datos = [...mapaNivel.entries()]
+        .map(([codigo, valor]) => ({ cat: Cubo.etiqLinea(GOBIERNO, codigo), valor, codigo }))
+        .filter((d) => d.valor > 0)
+        .sort((a, b) => b.valor - a.valor);
+      const porEtiqueta = new Map(datos.map((d) => [d.cat, d.codigo]));
+      const alSel = (etq) => { const c = porEtiqueta.get(etq); if (c) { alternar(clave, c); actualizar(); } };
+      const seleccionEtq = (est.sel[clave] || []).map((c) => Cubo.etiqLinea(GOBIERNO, c));
 
       let contenido;
-      if (!n1.size) {
-        contenido = UI.estadoVacio('Sin líneas del PND para esta combinación',
+      if (!datos.length) {
+        contenido = UI.estadoVacio(`Sin ${ETQ_NIVEL[nivel].toLowerCase()}s del PND para esta combinación`,
           'El cubo solo cruza las líneas del PND con la vigencia, la fuente, el sector y el departamento; ' +
-          'al filtrar por una fuente específica (o combinar más filtros) esta tabla puede quedar vacía.');
-      } else {
-        const total = [...n1.values()].reduce((a, b) => a + b, 0);
-        const tabla = [...n1.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'))
-          .map(([codigo, valor]) => ({
-            codigo, linea: Cubo.etiqLinea(GOBIERNO, codigo), valor, pct: total > 0 ? valor / total : null
-          }));
-        contenido = UI.tabla(tabla, [{ campo: 'linea', titulo: 'Eje' }, ...COLS_MONTO(`Monto (${Medida.corta()})`)], {
-          sinPaginacion: true,
-          onClickFila: (f) => { alternar('linea', f.codigo); actualizar(); },
-          filaSel: (f) => est.sel.linea && est.sel.linea.includes(f.codigo),
-          detalle: (f) => {
-            const hijos = n2.get(f.codigo);
-            if (!hijos || !hijos.size) return null;
-            return tablaHijos(hijos, f.valor, 'tema', 'Tema', (sf) => {
-              const nietos = n3.get(f.codigo + '|' + sf.codigo);
-              return nietos && nietos.size ? tablaHijos(nietos, sf.valor, 'estrategia', 'Estrategia', null) : null;
-            });
-          }
+          'al filtrar por una fuente específica (o combinar más filtros) esta caja puede quedar vacía.');
+      } else if (nivel === 'eje') {
+        contenido = Graficas.dona(datos, {
+          onClick: alSel, seleccion: seleccionEtq, colores: palRotativa(datos.map((d) => d.cat)), ancho: 420, alto: 260
         });
+      } else {
+        const r = Graficas.topOtros(datos, 15);
+        contenido = UI.h('div', {}, Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: seleccionEtq }),
+          r.otros.length ? UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${r.otros.length}): `), r.otros.join(', ')) : null);
       }
+
+      const notaNivel = nivel === 'estrategia'
+        ? ' No todas las Estrategias tienen programa asociado: algunas no aparecen aquí por no tener monto.'
+        : '';
+      const accLineas = UI.grupoBotones({
+        opciones: [{ valor: 'eje', texto: 'Eje' }, { valor: 'tema', texto: 'Tema' }, { valor: 'estrategia', texto: 'Estrategia' }],
+        valor: est.vistaLinea,
+        onCambio: (v) => { est.vistaLinea = v; pintarLineas(); }
+      });
       contLineas.append(UI.card(
-        UI.h('span', {}, 'Eje, Tema y Estrategia del PND ',
-          UI.h('span', { class: 'texto-suave' },
-            '— clic en un Eje o un Tema: lo filtra y despliega sus hijos; clic de nuevo lo quita y los ' +
-            'vuelve a ocultar. ▸ solo despliega sin filtrar. Clic en un Tema o Estrategia filtra sin ' +
-            'necesidad de elegir su padre. No todas las Estrategias tienen programa asociado: algunas no ' +
-            'aparecen en esta tabla por no tener monto.')),
-        contenido));
+        UI.h('span', {}, ETQ_NIVEL[nivel] + ' del PND ',
+          UI.h('span', { class: 'texto-suave' }, '— clic para filtrar todo el visor por esa categoría.' + notaNivel)),
+        contenido, { acciones: accLineas }));
     }
 
     Mapa.init().then(() => {
