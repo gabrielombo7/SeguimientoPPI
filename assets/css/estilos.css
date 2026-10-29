@@ -153,14 +153,16 @@ a { color: inherit; }
 .col-6 { flex: 1 1 320px; min-width: 0; }
 .col-7 { flex: 1.4 1 380px; min-width: 0; }
 .col-5 { flex: 1 1 280px; min-width: 0; }
-/* Fila de tres cajas (Fuentes · Fuente específica · Vigencias): la de en medio, más ancha por sus nombres largos */
+/* Fila de tres cajas (Fuentes · Eje del PND · Vigencias): Fuentes es la más ancha (trae Fuente
+   específica adentro), Eje del PND un poco más ancha que Vigencias (trae leyenda). */
 .col-t { flex: 1 1 240px; min-width: 0; }
+.col-t-media { flex: 1.15 1 260px; min-width: 0; }
 .col-t-ancha { flex: 1.35 1 300px; min-width: 0; }
-/* Vigencias y Fuentes a la misma altura por defecto: .fila-graficas ya estira estas dos columnas
-   a la altura de la más alta (align-items:stretch, el valor por defecto de flex); falta que la
-   tarjeta DENTRO de cada columna aproveche ese alto en vez de quedarse con el de su contenido. */
-.col-t, .col-t-ancha { display: flex; }
-.col-t > .card-dnp, .col-t-ancha > .card-dnp { flex: 1 1 auto; }
+/* Las tres a la misma altura por defecto: .fila-graficas ya estira estas columnas a la altura de
+   la más alta (align-items:stretch, el valor por defecto de flex); falta que la tarjeta DENTRO de
+   cada columna aproveche ese alto en vez de quedarse con el de su contenido. */
+.col-t, .col-t-media, .col-t-ancha { display: flex; }
+.col-t > .card-dnp, .col-t-media > .card-dnp, .col-t-ancha > .card-dnp { flex: 1 1 auto; }
 .panel-fijo { position: sticky; top: 76px; }
 
 /* ---------------------------------------------------------------- Tarjetas */

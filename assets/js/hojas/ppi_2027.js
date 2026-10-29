@@ -83,13 +83,20 @@ const HojaPPI2027 = (() => {
   function vigSel() { return est.sel.vigencia || 'Totales'; }
 
   function baseQ(gobierno, nombreInd) {
+    // «Sin privados» filtra TODO el tablero con la LISTA de fuentes (fuentesSinPrivados) — salvo
+    // con un Tema elegido sin Estrategia: ese marginal (linea2 fijo, linea3 en 'Total') no existe
+    // en el cubo cerrado para la LISTA, solo para el 'Total' real o una fuente puntual (mismo caso
+    // que en pintarLineas, donde Tema SÍ se resuelve aparte). Sin este caso especial, elegir un
+    // Tema con Sin privados activo dejaba en cero TODO el tablero, no solo esta caja (bug
+    // reportado). Se cae a 'Total' solo en ese caso puntual: Privados puede reaparecer mientras
+    // dure esa selección de Tema — mejor eso que una página entera en blanco.
+    const marginalTemaRoto = est.sel.tema && !est.sel.estrategia;
     return Medida.aplicar({
       gobierno, tipo_dato: IND_TD[nombreInd], indicador: IND_CUBO[nombreInd],
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(),
-      // Ver el comentario equivalente en hojas/visor.js: «Sin privados» filtra TODO el tablero.
-      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : 'Total'),
+      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' && !marginalTemaRoto ? fuentesSinPrivados() : 'Total'),
       fuente_fondo: est.sel.fondo || 'Total',
       // Ver el comentario equivalente en hojas/visor.js: cada nivel (Eje/Tema/Estrategia) fija el
       // SIGUIENTE a 'Total' salvo que haya algo elegido ahí (si no, cuenta el marginal Y sus hijos
@@ -220,13 +227,13 @@ const HojaPPI2027 = (() => {
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 't col-t-ancha' },
               UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
+            UI.h('div', { class: 't col-t-media' }, contLineas),
             UI.h('div', { class: 't col-t' }, UI.card('Vigencias', contVigencias))),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas), { acciones: accSector })),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
-              UI.h('div', {}, contMapa, contLeyenda)))),
-          contLineas))));
+              UI.h('div', {}, contMapa, contLeyenda))))))));
 
     let mapa = null;
 
@@ -315,6 +322,16 @@ const HojaPPI2027 = (() => {
         .forEach((i) => avisos.append(UI.h('div', { class: 'aviso-cobertura', role: 'note' },
           UI.h('strong', {}, i.ppi_gobierno + ' · ' + i.estado + '. '),
           i.cobertura || '')));
+      // Limitación del cubo (no de esta consulta): el marginal de Tema (linea2 fijo, linea3 en
+      // 'Total') solo existe cruzado con vigencia, NO con fuente, sector ni departamento — por eso
+      // Fuentes, Sectores y el mapa quedan vacíos al filtrar por un Tema (no por un Eje ni por una
+      // Estrategia completa, que sí cruzan con todo). El total de arriba sí es correcto.
+      if (est.sel.tema && !est.sel.estrategia) {
+        avisos.append(UI.h('div', { class: 'aviso-cobertura', role: 'note' },
+          UI.h('strong', {}, 'Filtrando por un Tema del PND. '),
+          'El cubo no cruza el Tema con fuente, sector ni departamento (solo con vigencia): Fuentes, ' +
+          'Sectores y el mapa quedan sin datos mientras dure este filtro. El total de la selección, arriba, sí es correcto.'));
+      }
 
       UI.vaciar(notaUnidad);
       {
@@ -696,6 +713,12 @@ const HojaPPI2027 = (() => {
       // por sí solos, ver el comentario de lineasPND() en hojas/visor.js— y se muestran top-N + Otros
       // como Sectores: con hasta ~60 estrategias una dona sería ilegible, así que solo Eje (6-7
       // categorías) va en dona; Tema (hasta ~26) y Estrategia en barras.
+      //
+      // Si ya hay un Eje (o Tema) elegido, Tema (o Estrategia) se acota a sus hijos, no a TODOS —
+      // antes se podía elegir un Eje y, aparte, un Tema de OTRO Eje (combinación imposible: el cubo
+      // cruza linea1×linea2 a la vez, así que esa mezcla siempre daba cero filas en todo el visor,
+      // no solo aquí). Un aviso arriba («Eje: …») deja claro a qué está acotada la caja, igual que
+      // «Sector: …» en Programas.
       const ETQ_NIVEL = { eje: 'Eje', tema: 'Tema', estrategia: 'Estrategia' };
       const CLAVE_NIVEL = { eje: 'linea', tema: 'tema', estrategia: 'estrategia' };
       const aplanar = (mapaDeMapas) => {
@@ -704,7 +727,26 @@ const HojaPPI2027 = (() => {
         return m;
       };
       const nivel = est.vistaLinea;
-      const mapaNivel = nivel === 'eje' ? n1 : nivel === 'tema' ? aplanar(n2) : aplanar(n3);
+      let mapaNivel, contexto = null;
+      if (nivel === 'eje') {
+        mapaNivel = n1;
+      } else if (nivel === 'tema') {
+        if (est.sel.linea && est.sel.linea.length) {
+          mapaNivel = new Map();
+          for (const eje of est.sel.linea) for (const [tema, valor] of (n2.get(eje) || [])) mapaNivel.set(tema, (mapaNivel.get(tema) || 0) + valor);
+          contexto = { etq: 'Eje', valor: est.sel.linea.map((c) => Cubo.etiqLinea(GOBIERNO, c)).join(' · ') };
+        } else mapaNivel = aplanar(n2);
+      } else {
+        if (est.sel.tema && est.sel.tema.length) {
+          mapaNivel = new Map();
+          for (const tema of est.sel.tema) {
+            const eje = [...n2.entries()].find(([, hijos]) => hijos.has(tema))?.[0];
+            const hijos = eje && n3.get(eje + '|' + tema);
+            if (hijos) for (const [codigo, valor] of hijos) mapaNivel.set(codigo, (mapaNivel.get(codigo) || 0) + valor);
+          }
+          contexto = { etq: 'Tema', valor: est.sel.tema.map((c) => Cubo.etiqLinea(GOBIERNO, c)).join(' · ') };
+        } else mapaNivel = aplanar(n3);
+      }
       const clave = CLAVE_NIVEL[nivel];
       const datos = [...mapaNivel.entries()]
         .map(([codigo, valor]) => ({ cat: Cubo.etiqLinea(GOBIERNO, codigo), valor, codigo }))
@@ -714,33 +756,36 @@ const HojaPPI2027 = (() => {
       const alSel = (etq) => { const c = porEtiqueta.get(etq); if (c) { alternar(clave, c); actualizar(); } };
       const seleccionEtq = (est.sel[clave] || []).map((c) => Cubo.etiqLinea(GOBIERNO, c));
 
-      let contenido;
+      let cuerpo;
       if (!datos.length) {
-        contenido = UI.estadoVacio(`Sin ${ETQ_NIVEL[nivel].toLowerCase()}s del PND para esta combinación`,
-          'El cubo solo cruza las líneas del PND con la vigencia, la fuente, el sector y el departamento; ' +
-          'al filtrar por una fuente específica (o combinar más filtros) esta caja puede quedar vacía.');
+        cuerpo = UI.estadoVacio(`Sin ${ETQ_NIVEL[nivel].toLowerCase()}s del PND para esta combinación`,
+          contexto ? `${contexto.etq} «${contexto.valor}» no tiene ${ETQ_NIVEL[nivel].toLowerCase()}s con monto.`
+          : 'El cubo solo cruza las líneas del PND con la vigencia, la fuente, el sector y el departamento; ' +
+            'al filtrar por una fuente específica (o combinar más filtros) esta caja puede quedar vacía.');
       } else if (nivel === 'eje') {
-        contenido = Graficas.dona(datos, {
+        cuerpo = Graficas.dona(datos, {
           onClick: alSel, seleccion: seleccionEtq, colores: palRotativa(datos.map((d) => d.cat)), ancho: 420, alto: 260
         });
       } else {
         const r = Graficas.topOtros(datos, 15);
-        contenido = UI.h('div', {}, Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: seleccionEtq }),
+        cuerpo = UI.h('div', {}, Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: seleccionEtq }),
           r.otros.length ? UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${r.otros.length}): `), r.otros.join(', ')) : null);
       }
+      // Título corto (como Vigencias/Fuentes): la columna es angosta y una leyenda larga en el
+      // encabezado empuja el selector hacia abajo. El «clic para filtrar» ya es la norma en todo
+      // el visor (lo dice el aviso de arriba de la página); la nota de Estrategia va a pie de caja.
+      const contenido = UI.h('div', {},
+        contexto ? UI.h('div', { class: 'fuente-esp-de' }, contexto.etq + ':', UI.h('span', {}, contexto.valor)) : null,
+        cuerpo,
+        nivel === 'estrategia' ? UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
+          'No todas las Estrategias tienen programa asociado: algunas no aparecen aquí por no tener monto.') : null);
 
-      const notaNivel = nivel === 'estrategia'
-        ? ' No todas las Estrategias tienen programa asociado: algunas no aparecen aquí por no tener monto.'
-        : '';
       const accLineas = UI.grupoBotones({
         opciones: [{ valor: 'eje', texto: 'Eje' }, { valor: 'tema', texto: 'Tema' }, { valor: 'estrategia', texto: 'Estrategia' }],
         valor: est.vistaLinea,
         onCambio: (v) => { est.vistaLinea = v; pintarLineas(); }
       });
-      contLineas.append(UI.card(
-        UI.h('span', {}, ETQ_NIVEL[nivel] + ' del PND ',
-          UI.h('span', { class: 'texto-suave' }, '— clic para filtrar todo el visor por esa categoría.' + notaNivel)),
-        contenido, { acciones: accLineas }));
+      contLineas.append(UI.card(ETQ_NIVEL[nivel] + ' del PND', contenido, { acciones: accLineas }));
     }
 
     Mapa.init().then(() => {

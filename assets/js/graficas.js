@@ -70,11 +70,17 @@ const Graficas = (() => {
 
     datos.forEach((d) => {
       const frac = d.valor / total;
-      const fin = ang + frac * Math.PI * 2;
+      const avance = frac * Math.PI * 2;
+      const fin = ang + avance;
+      // Una sola categoría (o una que, por los filtros, queda con el 100 %): el ángulo de inicio y
+      // de fin coinciden exactamente y el arco SVG no puede dibujar un círculo completo así (sale
+      // vacío, sin rebanada). Se recorta un pelo —imperceptible— el ángulo con el que se DIBUJA,
+      // sin tocar `fin` (que sigue avanzando el ángulo real para la próxima categoría).
+      const finDib = frac >= 0.9999 ? ang + avance * 0.9999 : fin;
       const color = colorDe(d.cat, colores[d.cat] || DNP.primario, seleccion);
       const p = (rad, a) => [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
-      const [x1, y1] = p(r, ang), [x2, y2] = p(r, fin);
-      const [x3, y3] = p(rInt, fin), [x4, y4] = p(rInt, ang);
+      const [x1, y1] = p(r, ang), [x2, y2] = p(r, finDib);
+      const [x3, y3] = p(rInt, finDib), [x4, y4] = p(rInt, ang);
       const grande = frac > 0.5 ? 1 : 0;
       const path = s('path', {
         class: 'rebanada', fill: color,
@@ -86,7 +92,7 @@ const Graficas = (() => {
 
       // Porcentaje dentro de la rebanada, solo si hay espacio
       if (frac > 0.05) {
-        const [tx, ty] = p((r + rInt) / 2, (ang + fin) / 2);
+        const [tx, ty] = p((r + rInt) / 2, (ang + finDib) / 2);
         svg.append(s('text', {
           x: tx, y: ty, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
           'font-size': 11, 'font-weight': 600, fill: textoContraste(color),
