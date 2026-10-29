@@ -83,20 +83,13 @@ const HojaPPI2027 = (() => {
   function vigSel() { return est.sel.vigencia || 'Totales'; }
 
   function baseQ(gobierno, nombreInd) {
-    // «Sin privados» filtra TODO el tablero con la LISTA de fuentes (fuentesSinPrivados) — salvo
-    // con un Tema elegido sin Estrategia: ese marginal (linea2 fijo, linea3 en 'Total') no existe
-    // en el cubo cerrado para la LISTA, solo para el 'Total' real o una fuente puntual (mismo caso
-    // que en pintarLineas, donde Tema SÍ se resuelve aparte). Sin este caso especial, elegir un
-    // Tema con Sin privados activo dejaba en cero TODO el tablero, no solo esta caja (bug
-    // reportado). Se cae a 'Total' solo en ese caso puntual: Privados puede reaparecer mientras
-    // dure esa selección de Tema — mejor eso que una página entera en blanco.
-    const marginalTemaRoto = est.sel.tema && !est.sel.estrategia;
     return Medida.aplicar({
       gobierno, tipo_dato: IND_TD[nombreInd], indicador: IND_CUBO[nombreInd],
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(),
-      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' && !marginalTemaRoto ? fuentesSinPrivados() : 'Total'),
+      // Ver el comentario equivalente en hojas/visor.js: «Sin privados» filtra TODO el tablero.
+      fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : 'Total'),
       fuente_fondo: est.sel.fondo || 'Total',
       // Ver el comentario equivalente en hojas/visor.js: cada nivel (Eje/Tema/Estrategia) fija el
       // SIGUIENTE a 'Total' salvo que haya algo elegido ahí (si no, cuenta el marginal Y sus hijos
@@ -318,16 +311,6 @@ const HojaPPI2027 = (() => {
         .forEach((i) => avisos.append(UI.h('div', { class: 'aviso-cobertura', role: 'note' },
           UI.h('strong', {}, i.ppi_gobierno + ' · ' + i.estado + '. '),
           i.cobertura || '')));
-      // Limitación del cubo (no de esta consulta): el marginal de Tema (linea2 fijo, linea3 en
-      // 'Total') solo existe cruzado con vigencia, NO con fuente, sector ni departamento — por eso
-      // Fuentes, Sectores y el mapa quedan vacíos al filtrar por un Tema (no por un Eje ni por una
-      // Estrategia completa, que sí cruzan con todo). El total de arriba sí es correcto.
-      if (est.sel.tema && !est.sel.estrategia) {
-        avisos.append(UI.h('div', { class: 'aviso-cobertura', role: 'note' },
-          UI.h('strong', {}, 'Filtrando por un Tema del PND. '),
-          'El cubo no cruza el Tema con fuente, sector ni departamento (solo con vigencia): Fuentes, ' +
-          'Sectores y el mapa quedan sin datos mientras dure este filtro. El total de la selección, arriba, sí es correcto.'));
-      }
 
       UI.vaciar(notaUnidad);
       {
