@@ -285,12 +285,8 @@ const HojaPPI2027 = (() => {
       // hojas/visor.js. pintar() (no actualizar()): cambiar de vista no dispara una consulta nueva.
       envFuentes.hidden = est.vistaFuentes === 'especifica';
       envFondo.hidden = est.vistaFuentes !== 'especifica';
-      const TITULOS_FUENTES = {
-        total: 'Fuentes',
-        sin_privados: UI.h('span', {}, 'Fuentes ', UI.h('span', { class: 'texto-suave' }, '— sin privados')),
-        especifica: UI.h('span', {}, 'Fuente específica ',
-          UI.h('span', { class: 'texto-suave' }, '— desglose de la fuente elegida en «Fuentes»'))
-      };
+      // Título corto (como Eje/Tema/Estrategia): el toggle de al lado ya dice el modo activo.
+      const TITULOS_FUENTES = { total: 'Fuentes', sin_privados: 'Fuentes', especifica: 'Fuente específica' };
       UI.vaciar(tituloFuentes).append(TITULOS_FUENTES[est.vistaFuentes]);
       UI.vaciar(accFuentes).append(UI.grupoBotones({
         opciones: [{ valor: 'total', texto: 'Total' }, { valor: 'sin_privados', texto: 'Sin privados' },
@@ -763,11 +759,17 @@ const HojaPPI2027 = (() => {
           : 'El cubo solo cruza las líneas del PND con la vigencia, la fuente, el sector y el departamento; ' +
             'al filtrar por una fuente específica (o combinar más filtros) esta caja puede quedar vacía.');
       } else if (nivel === 'eje') {
-        cuerpo = Graficas.dona(datos, {
-          onClick: alSel, seleccion: seleccionEtq, colores: palRotativa(datos.map((d) => d.cat)), ancho: 420, alto: 260
+        // Mismo tamaño que la dona de Fuentes (ancho/alto/clase): las dos donas de la fila quedan iguales.
+        const dona = Graficas.dona(datos, {
+          onClick: alSel, seleccion: seleccionEtq, colores: palRotativa(datos.map((d) => d.cat)), ancho: 340, alto: 240
         });
+        dona.classList.add('grafica-dona-chica');
+        cuerpo = dona;
       } else {
-        const r = Graficas.topOtros(datos, 15);
+        // Acotado por el nivel de arriba (Eje para Tema, Tema para Estrategia): ya es una lista
+        // corta por sí sola, se muestra completa. Sin acotar, se limita a 7 + Otros —como el resto
+        // del tablero (Sectores, Programas…)— para no disparar el alto de la caja.
+        const r = Graficas.topOtros(datos, contexto ? Infinity : 7);
         cuerpo = UI.h('div', {}, Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: seleccionEtq }),
           r.otros.length ? UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${r.otros.length}): `), r.otros.join(', ')) : null);
       }
