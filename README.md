@@ -54,7 +54,7 @@ quien va a regenerar `data/` avisa antes (qué va a tocar) y después (qué camb
 pisar ediciones a medio hacer ni leer datos a medio escribir.
 
 **Ya no hay control de versiones (git)** en esta carpeta ni en `01. Estimación`: el historial de
-cambios vive en las bitácoras de `00. Documentación/` (por ronda y fecha), no en `git log`.
+cambios vive en `0. Documentación/Historial.md` (por ronda y fecha), no en `git log`.
 
 ## Capas de indicadores
 
@@ -113,7 +113,7 @@ descargas/                  PPI_2027-2030.csv — archivo ESTÁTICO (no lo gener
 pipeline/
   actualizar_insumos.R      copia los insumos desde 4. Consolidar y 1. Fuentes/Supuestos
   exportar_web.R            convierte los insumos en data/*.js
-  exportar_base_wide.R      arma descargas/PPI_2027-2030.csv desde 1. Consulta/datos_PPI.xlsx —
+  exportar_base_wide.R      arma descargas/PPI_2027-2030.csv desde 1. Consulta/Datos/PPI.xlsx —
                              PPI 2027-2030 sin transformar, misma estructura que en Consulta
                              (correr a mano cuando ese Excel cambie; no depende de exportar_web.R)
   insumos/                  cubo, catálogos, geo, iniciativas, Excel de interfaz (no se publica)

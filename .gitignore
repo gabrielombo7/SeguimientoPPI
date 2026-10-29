@@ -1,2 +1,5 @@
 pipeline/
 .DS_Store
+README.html
+data/.Rhistory
+.Rhistory
