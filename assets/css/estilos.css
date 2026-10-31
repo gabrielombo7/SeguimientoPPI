@@ -147,7 +147,7 @@ a { color: inherit; }
 
 /* ------------------------------------------------------------------ Grilla */
 .fila { display: flex; flex-wrap: wrap; gap: 1.1rem; align-items: flex-start; }
-.col-filtros { flex: 0 0 260px; max-width: 260px; }
+.col-filtros { flex: 0 0 260px; max-width: 260px; position: relative; transition: flex-basis .15s ease, max-width .15s ease; }
 .col-contenido { flex: 1 1 0; min-width: 0; }
 /* align-items:flex-start (no el stretch por defecto): cada caja toma SU alto de contenido, no el
    de la más alta de la fila — la de Eje/Tema/Estrategia cambia mucho de alto según el nivel y la
@@ -156,12 +156,21 @@ a { color: inherit; }
 .col-6 { flex: 1 1 320px; min-width: 0; }
 .col-7 { flex: 1.4 1 380px; min-width: 0; }
 .col-5 { flex: 1 1 280px; min-width: 0; }
-/* Fila de tres cajas (Fuentes · Eje del PND · Vigencias): Fuentes es la más ancha (trae Fuente
-   específica adentro), Eje del PND un poco más ancha que Vigencias (trae leyenda). */
-.col-t { flex: 1 1 240px; min-width: 0; }
-.col-t-media { flex: 1.15 1 260px; min-width: 0; }
-.col-t-ancha { flex: 1.35 1 300px; min-width: 0; }
 .panel-fijo { position: sticky; top: 76px; }
+
+/* Acordeón del panel de filtros (izquierda): botón redondo anclado al borde de .col-filtros, igual
+   en las 4 hojas que lo usan (ver UI.colFiltrosColapsable en ui.js). Colapsado, el panel se reduce a
+   una franja angosta (solo el botón) y .col-contenido recupera ese ancho. */
+.btn-colapsar-filtros {
+  position: absolute; top: .25rem; right: -14px; z-index: 2;
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--dnp-borde);
+  background: #fff; color: var(--dnp-gris); box-shadow: var(--sombra);
+  font-size: .85rem; line-height: 1; cursor: pointer;
+}
+.btn-colapsar-filtros:hover { border-color: var(--dnp-primario); color: var(--dnp-primario); }
+.col-filtros-colapsado { flex: 0 0 32px; max-width: 32px; overflow: hidden; }
+.col-filtros-colapsado .panel-fijo { display: none; }
+.col-filtros-colapsado .btn-colapsar-filtros { right: auto; left: 2px; }
 
 /* ---------------------------------------------------------------- Tarjetas */
 .card-dnp {
@@ -294,24 +303,8 @@ a { color: inherit; }
 .picker-opcion[aria-selected="true"] { background: var(--dnp-primario); color: #fff; }
 .picker-opcion input { margin: .25rem 0 0; flex: 0 0 auto; pointer-events: none; }
 
-/* Popover propio (reemplaza el popover de bslib) */
-.btn-filtros-adic {
-  display: flex; align-items: center; gap: .4rem; width: 100%;
-  padding: .5rem .75rem; background: var(--dnp-primario-claro); color: var(--dnp-tinta);
-  border: 1px solid var(--dnp-borde); border-radius: .6rem;
-  font-size: .82rem; font-weight: 600; cursor: pointer;
-}
-.btn-filtros-adic:hover { border-color: var(--dnp-primario); color: var(--dnp-primario); }
-.popover-dnp {
-  position: absolute; z-index: 1200; width: 300px; max-width: 88vw;
-  background: #fff; border: 1px solid var(--dnp-borde); border-radius: .8rem;
-  box-shadow: var(--sombra); padding: .9rem;
-  display: flex; flex-direction: column; gap: .75rem;
-}
-.popover-dnp .popover-titulo { font-size: .8rem; font-weight: 800; color: var(--dnp-primario-osc); }
-
-/* «Filtros» del Visor: toggle inline (no un popover flotante), despliega el bloque hacia abajo
-   dentro del mismo panel — mismo estilo de botón que .btn-filtros-adic. */
+/* «Filtros» / «Filtros adicionales»: toggle inline (no un popover flotante), despliega el bloque
+   hacia abajo dentro del mismo panel. Mismo patrón en las 4 hojas (visor, ppi_2027, descargar). */
 .btn-toggle-filtros {
   display: flex; align-items: center; justify-content: space-between; width: 100%;
   padding: .5rem .75rem; background: var(--dnp-primario-claro); color: var(--dnp-tinta);
@@ -513,6 +506,9 @@ a { color: inherit; }
 @media (max-width: 960px) {
   .col-filtros { flex: 1 1 100%; max-width: none; }
   .panel-fijo { position: static; }
+  /* Colapsado en celular: una franja angosta en vez de ancho completo (el toggle sigue sirviendo
+     para recuperar espacio vertical, que es justo lo que más falta en pantallas chicas). */
+  .col-filtros-colapsado { flex: 0 0 32px; max-width: 32px; }
 }
 @media (max-width: 720px) {
   .dnp-nav-toggle { display: flex; }

@@ -234,26 +234,22 @@ const UI = {
       : cont;
   },
 
-  // Botón que abre un panel flotante (equivale a popover() de bslib)
-  popover(textoBoton, titulo, construirContenido) {
-    const boton = h('button', { type: 'button', class: 'btn-filtros-adic' }, textoBoton);
-    let panel = null;
-    const cerrar = () => { if (panel) { panel.remove(); panel = null; } };
-    boton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (panel) return cerrar();
-      panel = h('div', { class: 'popover-dnp' },
-        h('div', { class: 'popover-titulo' }, titulo), construirContenido());
-      panel.addEventListener('click', (ev) => ev.stopPropagation());
-      document.body.append(panel);
-      const r = boton.getBoundingClientRect();
-      // Se ancla al botón y se corrige si se sale por el borde derecho
-      panel.style.top = (window.scrollY + r.bottom + 6) + 'px';
-      const x = Math.min(r.left + window.scrollX, window.innerWidth - panel.offsetWidth - 12);
-      panel.style.left = Math.max(8, x) + 'px';
+  // Envuelve el panel de filtros (columna izquierda) con un botón de acordeón para colapsarlo/
+  // expandirlo. Toggle puramente visual (alterna una clase CSS y el ícono del botón): no vuelve a
+  // pintar la hoja, así que no reinicia scroll ni dispara de nuevo las consultas del cubo. Usado por
+  // las 4 hojas con panel de filtros (visor, ppi_2027, descargar, iniciativas).
+  colFiltrosColapsable(contenido) {
+    const boton = h('button', {
+      type: 'button', class: 'btn-colapsar-filtros', 'aria-label': 'Ocultar filtros', title: 'Ocultar filtros'
+    }, '‹');
+    const col = h('div', { class: 'col-filtros' }, boton, contenido);
+    boton.addEventListener('click', () => {
+      const colapsado = col.classList.toggle('col-filtros-colapsado');
+      boton.textContent = colapsado ? '›' : '‹';
+      const etq = colapsado ? 'Mostrar filtros' : 'Ocultar filtros';
+      boton.title = etq; boton.setAttribute('aria-label', etq);
     });
-    document.addEventListener('click', cerrar);
-    return boton;
+    return col;
   },
 
   // Chips del cross-filtering: una por dimensión con selección activa

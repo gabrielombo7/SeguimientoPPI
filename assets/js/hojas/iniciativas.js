@@ -91,7 +91,7 @@ const HojaIniciativas = (() => {
       const contTabla = UI.h('div', {});
 
       main.append(UI.h('div', { class: 'fila' },
-        UI.h('div', { class: 'col-filtros' }, panelFiltros),
+        UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           kpis,
           UI.h('div', { class: 'fila-graficas' },

@@ -35,7 +35,8 @@ const HojaDescargar = (() => {
     indicadores: ['total_inversion'],
     vista: 'Tabla',                    // por defecto la tabla, no la gráfica
     gobiernos: [],
-    f: { vigencia: [], fuente_general: [], sector: [], linea1: [], departamento: [] }
+    f: { vigencia: [], fuente_general: [], sector: [], linea1: [], departamento: [] },
+    filtrosOpen: false                 // «Filtros adicionales» — toggle inline, no es un filtro en sí
   };
 
   const indMulti = () => est.modoComp === 'Indicadores';
@@ -225,7 +226,7 @@ const HojaDescargar = (() => {
 
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
-        UI.h('div', { class: 'col-filtros' }, panelFiltros),
+        UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           UI.card(contTitulo, contVista, { acciones })))));
 
@@ -270,7 +271,13 @@ const HojaDescargar = (() => {
           }
         }),
         UI.h('hr', { class: 'divisor' }),
-        UI.popover('Filtros adicionales', 'Filtros adicionales', () => UI.h('div', { class: 'campo' },
+        // «Filtros adicionales»: mismo patrón inline que el Visor Interactivo (no un popover flotante)
+        // — un botón que despliega el bloque hacia abajo, dentro del mismo panel.
+        UI.h('button', {
+          type: 'button', class: 'btn-toggle-filtros', 'aria-expanded': String(est.filtrosOpen),
+          onclick: () => { est.filtrosOpen = !est.filtrosOpen; pintarFiltros(); }
+        }, 'Filtros adicionales', UI.h('span', { class: 'icono-toggle', 'aria-hidden': 'true' }, est.filtrosOpen ? '▴' : '▾')),
+        est.filtrosOpen ? UI.h('div', { class: 'filtros-extra' },
           UI.picker({
             etiqueta: 'Gobierno / PPI', opciones: Cubo.meta.gobiernos, multiple: true,
             valor: est.gobiernos, textoTodas: 'Todos',
@@ -288,7 +295,8 @@ const HojaDescargar = (() => {
               for (const k of Object.keys(est.f)) est.f[k] = [];
               pintarFiltros(); actualizar();
             }
-          }, 'Limpiar filtros')))
+          }, 'Limpiar filtros')
+        ) : null
       ), { clase: 'card-filtros' }));
 
       panelFiltros.append(UI.card('Descargar', UI.h('div', { class: 'campo' },

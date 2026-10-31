@@ -214,19 +214,25 @@ const HojaPPI2027 = (() => {
 
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
-        UI.h('div', { class: 'col-filtros' }, panelFiltros),
+        UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
+          // Fuentes y Eje/Tema/Estrategia, 50/50 (dos cajas «selector + 1 gráfica», mismo patrón):
+          // mismas dimensiones con dos col-6.
           UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 't col-t-ancha' },
+            UI.h('div', { class: 'col-6' },
               UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
-            UI.h('div', { class: 't col-t-media' }, contLineas),
-            UI.h('div', { class: 't col-t' }, UI.card('Vigencias', contVigencias))),
+            UI.h('div', { class: 'col-6' }, contLineas)),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas), { acciones: accSector })),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
-              UI.h('div', {}, contMapa, contLeyenda))))))));
+              UI.h('div', {}, contMapa, contLeyenda)))),
+          // Vigencias debajo de Sectores, mismo ancho (col-7 + un espaciador col-5 vacío, igual
+          // proporción que la fila de arriba) — no estirada a toda la fila.
+          UI.h('div', { class: 'fila-graficas' },
+            UI.h('div', { class: 'col-7' }, UI.card('Vigencias', contVigencias)),
+            UI.h('div', { class: 'col-5' }))))));
 
     let mapa = null;
 
@@ -353,12 +359,16 @@ const HojaPPI2027 = (() => {
         const razon = Cubo.total(Medida.enCorrientes(serieQ(s1))) / Cubo.total(Medida.enCorrientes(qUni));
         const etqPart = s1 === 'Planeado PPI' ? '% del total del PPI' : '% del total de ' + s1.toLowerCase();
         const etqUni = s1 === 'Planeado PPI' ? 'Total del PPI' : 'Total de ' + s1.toLowerCase();
-        // Privados, de ese mismo total sin filtros: solo tiene sentido para Planeado PPI (es la única
-        // medida donde Privados trae dato — no hay ejecución de privados).
+        // Sin privados, de ese mismo total sin filtros: solo tiene sentido para Planeado PPI (es la
+        // única medida donde Privados trae dato — no hay ejecución de privados). Se muestra el monto
+        // SIN privados (no "de los cuales son privados"): es la cifra que de verdad se usa en el resto
+        // del tablero (vista por defecto de Fuentes).
         const detalleUni = s1 === 'Planeado PPI'
           ? (() => {
               const totPriv = Cubo.total(Object.assign({}, qUni, { fuente_general: ['Privados'] }));
-              return totPriv > 0 ? `de los cuales ${Formato.cop(totPriv)} son privados (${Formato.pct(totPriv / totUni)})` : null;
+              if (!(totPriv > 0)) return null;
+              const totSinPriv = totUni - totPriv;
+              return `Sin privados: ${Formato.cop(totSinPriv)} (${Formato.pct(totSinPriv / totUni)})`;
             })()
           : null;
         kpis.append(UI.filaKpis(
@@ -724,6 +734,17 @@ const HojaPPI2027 = (() => {
             if (hijos) for (const [codigo, valor] of hijos) mapaNivel.set(codigo, (mapaNivel.get(codigo) || 0) + valor);
           }
           contexto = { etq: 'Tema', valor: est.sel.tema.map((c) => Cubo.etiqLinea(GOBIERNO, c)).join(' · ') };
+        } else if (est.sel.linea && est.sel.linea.length) {
+          // Sin Tema elegido pero con Eje sí: TODAS las estrategias de ese Eje (de todos sus temas),
+          // no solo las de un tema puntual.
+          mapaNivel = new Map();
+          for (const eje of est.sel.linea) {
+            for (const tema of (n2.get(eje) || new Map()).keys()) {
+              const hijos = n3.get(eje + '|' + tema);
+              if (hijos) for (const [codigo, valor] of hijos) mapaNivel.set(codigo, (mapaNivel.get(codigo) || 0) + valor);
+            }
+          }
+          contexto = { etq: 'Eje', valor: est.sel.linea.map((c) => Cubo.etiqLinea(GOBIERNO, c)).join(' · ') };
         } else mapaNivel = aplanar(n3);
       }
       const clave = CLAVE_NIVEL[nivel];

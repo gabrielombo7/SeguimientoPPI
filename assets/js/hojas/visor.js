@@ -337,20 +337,24 @@ const HojaVisor = (() => {
 
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
-        UI.h('div', { class: 'col-filtros' }, panelFiltros),
+        UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
-          // Fila 1: tres cajas (Fuentes, Eje del PND, Vigencias) · Fila 2: sector y departamento (mapa) lado a lado
+          // Fila 1: Fuentes y Eje/Tema/Estrategia, 50/50 (dos cajas «selector + 1 gráfica», mismas
+          // dimensiones con dos col-6) · Fila 2: sector y departamento (mapa) lado a lado · Fila 3:
+          // Vigencias debajo de Sectores, mismo ancho (col-7 + espaciador col-5 vacío, no estirada).
           UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 't col-t-ancha' },
+            UI.h('div', { class: 'col-6' },
               UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
-            UI.h('div', { class: 't col-t-media' }, contLineas),
-            UI.h('div', { class: 't col-t' }, UI.card('Vigencias', contVigencias))),
+            UI.h('div', { class: 'col-6' }, contLineas)),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas, envEntidad), { acciones: accSector })),
             UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
-              UI.h('div', {}, contMapa, contLeyenda))))))));
+              UI.h('div', {}, contMapa, contLeyenda)))),
+          UI.h('div', { class: 'fila-graficas' },
+            UI.h('div', { class: 'col-7' }, UI.card('Vigencias', contVigencias)),
+            UI.h('div', { class: 'col-5' }))))));
 
     // Se crea abajo, cuando la geometría ya esté cargada
     let mapa = null;
@@ -700,13 +704,18 @@ const HojaVisor = (() => {
         // totales» (ver pintarMapa) — no una razón: con s2 < s1 una razón <100 % se lee ambiguo («¿100
         // % de qué?»), mientras que una variación negativa dice directo "decreció X %". La fórmula no
         // cambia según cuál sea mayor: (s2 − s1) / s1 da signo correcto en ambos casos.
+        // Respeta Corrientes/Constantes (crecimiento real vs nominal — verificado: Territorio 2023-2026→
+        // 2027-2030 da +67,7 % en corrientes y +42,1 % en constantes 2026, antes se quedaba fijo en el
+        // de corrientes). En % del PIB se deja en corrientes: mezclar %PIB de 2 gobiernos con periodos
+        // distintos no tiene un único denominador (mismo motivo que la nota de % del PIB en pintar()).
         // Dentro de un mismo gobierno (2 indicadores, p. ej. Compromisos/Planeado) se deja la razón de
         // siempre: ahí el 2º valor normalmente es un subconjunto del 1º y el % es un avance, no un crecimiento.
+        const [vBase1, vBase2] = Medida.pib ? [v1c, v2c] : [v1, v2];
         kpis.append(UI.filaKpis(
           UI.kpi(Formato.cop(v2), s2 + ' de la selección', 'dorado'),
           UI.kpi(Formato.cop(v1), s1 + ' de la selección'),
           entreGob()
-            ? UI.kpi(Formato.pct(v1c > 0 ? (v2c - v1c) / v1c : null, 1, true), 'Variación ' + s2 + ' vs ' + s1, 'acento')
+            ? UI.kpi(Formato.pct(vBase1 > 0 ? (vBase2 - vBase1) / vBase1 : null, 1, true), 'Variación ' + s2 + ' vs ' + s1, 'acento')
             : UI.kpi(Formato.pct(v1c > 0 ? v2c / v1c : null), s2 + ' / ' + s1, 'acento')));
       } else if (m === 'multi') {
         const acentos = [null, 'dorado', 'acento'];       // con más de 3 series los colores se repiten; la fila se parte en renglones
@@ -726,12 +735,16 @@ const HojaVisor = (() => {
           : s1 === 'Planeado PPI' ? '% del total del PPI' : '% del total de ' + s1.toLowerCase();
         const etqUni = entreGob() ? 'Total de ' + s1
           : s1 === 'Planeado PPI' ? 'Total del PPI' : 'Total de ' + s1.toLowerCase();
-        // Privados, de ese mismo total sin filtros: solo tiene sentido para Planeado PPI (es la única
-        // medida donde Privados trae dato — no hay ejecución de privados).
+        // Sin privados, de ese mismo total sin filtros: solo tiene sentido para Planeado PPI (es la
+        // única medida donde Privados trae dato — no hay ejecución de privados). Se muestra el monto
+        // SIN privados (no "de los cuales son privados"): es la cifra que de verdad se usa en el resto
+        // del tablero (vista por defecto de Fuentes).
         const detalleUni = s1 === 'Planeado PPI'
           ? (() => {
               const totPriv = Cubo.total(Object.assign({}, qUni, { fuente_general: ['Privados'] }));
-              return totPriv > 0 ? `de los cuales ${Formato.cop(totPriv)} son privados (${Formato.pct(totPriv / totUni)})` : null;
+              if (!(totPriv > 0)) return null;
+              const totSinPriv = totUni - totPriv;
+              return `Sin privados: ${Formato.cop(totSinPriv)} (${Formato.pct(totSinPriv / totUni)})`;
             })()
           : null;
         kpis.append(UI.filaKpis(
@@ -1358,6 +1371,17 @@ const HojaVisor = (() => {
             if (hijos) for (const [codigo, valor] of hijos) mapaNivel.set(codigo, (mapaNivel.get(codigo) || 0) + valor);
           }
           contexto = { etq: 'Tema', valor: est.sel.tema.map((c) => Cubo.etiqLinea(gob, c)).join(' · ') };
+        } else if (est.sel.linea && est.sel.linea.length) {
+          // Sin Tema elegido pero con Eje sí: TODAS las estrategias de ese Eje (de todos sus temas),
+          // no solo las de un tema puntual.
+          mapaNivel = new Map();
+          for (const eje of est.sel.linea) {
+            for (const tema of (n2.get(eje) || new Map()).keys()) {
+              const hijos = n3.get(eje + '|' + tema);
+              if (hijos) for (const [codigo, valor] of hijos) mapaNivel.set(codigo, (mapaNivel.get(codigo) || 0) + valor);
+            }
+          }
+          contexto = { etq: 'Eje', valor: est.sel.linea.map((c) => Cubo.etiqLinea(gob, c)).join(' · ') };
         } else mapaNivel = aplanar(n3);
       }
       const clave = CLAVE_NIVEL[nivel];
