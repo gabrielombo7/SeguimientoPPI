@@ -1106,8 +1106,8 @@ const HojaVisor = (() => {
             'El PGN no tiene entidades con los filtros elegidos, o el cubo no cruza esa combinación.');
         } else {
           contEntidad.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
-            'Clic en una barra para filtrar todo el visor por esa entidad. En PPI 2027-2030 el PGN es ' +
-            'solo funcionamiento, así que el ranking de entidades no se parece al de gobiernos anteriores.'));
+            'Clic en una barra para filtrar todo el visor por esa entidad. En PPI 2027-2030 el PGN son las ' +
+            'cuotas de funcionamiento e inversión cargadas en la PIIP; la inversión aún es provisional.'));
         }
       }
 
