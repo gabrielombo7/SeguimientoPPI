@@ -217,20 +217,19 @@ const HojaPPI2027 = (() => {
         UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
-          // Fuentes y Eje/Tema/Estrategia, 50/50 (dos cajas «selector + 1 gráfica», mismo patrón):
-          // mismas dimensiones con dos col-6.
+          // Fuentes, Eje/Tema/Estrategia y Vigencias en una sola fila: Fuentes y Eje/Tema/Estrategia
+          // con el mismo ancho (col-t-igual), Vigencias más angosta (col-t) — esta hoja nunca compara
+          // gobiernos, así que esta fila es siempre de 3 cajas (a diferencia de hojas/visor.js).
           UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 'col-6' },
+            UI.h('div', { class: 'col-t-igual' },
               UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
-            UI.h('div', { class: 'col-6' }, contLineas)),
-          // Vigencias arriba de Departamentos, en la misma columna angosta (col-5): altura chica
-          // (ver el `alto` reducido al pintarla) para que las dos quepan sin alargar la fila.
+            UI.h('div', { class: 'col-t-igual' }, contLineas),
+            UI.h('div', { class: 'col-t' }, UI.card('Vigencias', contVigencias))),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas), { acciones: accSector })),
-            UI.h('div', { class: 'col-5' },
-              UI.card('Vigencias', contVigencias),
-              UI.card('Departamentos', UI.h('div', {}, contMapa, contLeyenda))))))));
+            UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
+              UI.h('div', {}, contMapa, contLeyenda))))))));
 
     let mapa = null;
 
@@ -441,23 +440,21 @@ const HojaPPI2027 = (() => {
       {
         const d = porDim('vigencia');
         const orden = (a, b) => String(a.cat).localeCompare(String(b.cat), 'es', { numeric: true });
-        // alto chico (140): Vigencias va arriba de Departamentos en una columna angosta — se
-        // prioriza que quepan las dos sin alargar la fila, pero sigue legible (ejes + etiquetas).
         if (mb === 'overlay') {
           contVigencias.append(Graficas.barrasBalance(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320, alto: 140
+            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320
           }));
         } else if (mb === 'grupo') {
           const g = Graficas.barrasAgrupadas(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            pal: palSeries(), orientacion: 'v', ancho: 320, alto: 140
+            pal: palSeries(), orientacion: 'v', ancho: 320
           });
           contVigencias.append(g.svg, Graficas.leyenda(g.series, g.pal));
         } else {
           contVigencias.append(Graficas.barrasV(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            ancho: 320, alto: 140
+            ancho: 320, alto: 240
           }));
         }
       }

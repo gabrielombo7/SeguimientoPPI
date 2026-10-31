@@ -335,24 +335,26 @@ const HojaVisor = (() => {
     const tituloSector = UI.h('span', {});
     const accSector = UI.h('div', {});
 
+    // Fila 1: Fuentes, Eje/Tema/Estrategia y Vigencias — Fuentes y Eje/Tema/Estrategia con el mismo
+    // ancho (col-t-igual), Vigencias más angosta (col-t). Entre gobiernos esa caja no aplica (se
+    // oculta, ver pintarLineas): Fuentes y Vigencias pasan a col-7/col-5 —el mismo ancho que
+    // Sectores/Departamentos en la fila de abajo— para no dejar un hueco donde iba esa caja.
+    const colFuentes = UI.h('div', { class: 'col-t-igual' },
+      UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes }));
+    const colLineas = UI.h('div', { class: 'col-t-igual' }, contLineas);
+    const colVigencias = UI.h('div', { class: 'col-t' }, UI.card('Vigencias', contVigencias));
+
     raiz.append(UI.h('main', { class: 'container-xl dnp-main' },
       UI.h('div', { class: 'fila' },
         UI.colFiltrosColapsable(panelFiltros),
         UI.h('div', { class: 'col-contenido' },
           avisos, notaUnidad, kpis, chips,
-          // Fila 1: Fuentes y Eje/Tema/Estrategia, 50/50 (dos cajas «selector + 1 gráfica», mismas
-          // dimensiones con dos col-6) · Fila 2: sector, y Vigencias arriba de Departamentos en la
-          // misma columna angosta (altura chica — ver el `alto` reducido al pintarla).
-          UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 'col-6' },
-              UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
-            UI.h('div', { class: 'col-6' }, contLineas)),
+          UI.h('div', { class: 'fila-graficas' }, colFuentes, colLineas, colVigencias),
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas, envEntidad), { acciones: accSector })),
-            UI.h('div', { class: 'col-5' },
-              UI.card('Vigencias', contVigencias),
-              UI.card('Departamentos', UI.h('div', {}, contMapa, contLeyenda))))))));
+            UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
+              UI.h('div', {}, contMapa, contLeyenda))))))));
 
     // Se crea abajo, cuando la geometría ya esté cargada
     let mapa = null;
@@ -922,12 +924,10 @@ const HojaVisor = (() => {
       else {
         const d = porDim('vigencia');
         const orden = (a, b) => String(a.cat).localeCompare(String(b.cat), 'es', { numeric: true });
-        // alto chico (140): Vigencias va arriba de Departamentos en una columna angosta — se
-        // prioriza que quepan las dos sin alargar la fila, pero sigue legible (ejes + etiquetas).
         if (mb === 'overlay') {
           contVigencias.append(Graficas.barrasBalance(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320, alto: 140
+            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320
           }));
         } else if (mb === 'grupo' && entreGob()) {
           // Entre gobiernos, eje X = AÑO CALENDARIO real (no «Año k»): cada gobierno dibuja solo
@@ -935,7 +935,7 @@ const HojaVisor = (() => {
           const datosLin = seriesVisual().flatMap((s) =>
             Cubo.agregar(serieQ(s, { vigencia: DES }), 'vigencia').map((x) => ({ cat: String(x.cat), serie: s, valor: x.valor })));
           const g = Graficas.lineas(datosLin, {
-            pal: palSeries(), ancho: 320, alto: 140,
+            pal: palSeries(), ancho: 320, alto: 240,
             onClick: (anio, s) => {
               const idx = vigenciasDe(s).indexOf(anio);
               if (idx >= 0) { alternar('vigencia', 'Año ' + (idx + 1)); actualizar(); }
@@ -945,13 +945,13 @@ const HojaVisor = (() => {
         } else if (mb === 'grupo') {
           const g = Graficas.barrasAgrupadas(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            pal: palSeries(), orientacion: 'v', ancho: 320, alto: 140
+            pal: palSeries(), orientacion: 'v', ancho: 320
           });
           contVigencias.append(g.svg, Graficas.leyenda(g.series, g.pal));
         } else {
           contVigencias.append(Graficas.barrasV(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            ancho: 320, alto: 140
+            ancho: 320, alto: 240
           }));
         }
       }
@@ -1285,6 +1285,11 @@ const HojaVisor = (() => {
     // propios del PND de cada gobierno, así que no se comparan entre gobiernos.
     function pintarLineas() {
       UI.vaciar(contLineas);
+      // Entre gobiernos la caja de Eje/Tema/Estrategia no aplica (abajo, return temprano): se oculta
+      // y Fuentes/Vigencias crecen al ancho de Sectores/Departamentos para no dejar un hueco.
+      colLineas.hidden = entreGob();
+      colFuentes.className = entreGob() ? 'col-7' : 'col-t-igual';
+      colVigencias.className = entreGob() ? 'col-5' : 'col-t';
       const s = series();
       if (entreGob() || s.length !== 1 || s[0] !== 'Planeado PPI') {
         est.sel.linea = null; est.sel.tema = null; est.sel.estrategia = null;
