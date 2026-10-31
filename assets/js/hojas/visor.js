@@ -222,7 +222,7 @@ const HojaVisor = (() => {
   // per cápita no calcula un valor para 'Nacional' (no hay con qué dividir) y el % no depende del
   // año base de las constantes, así que se ignora la medida/unidad activa para este cálculo.
   function pctRegionalizado(s) {
-    const q = Object.assign({}, serieQ(s), { departamento: 'Total', tipo_valor: 'corriente', base: null, pib: false });
+    const q = Object.assign({}, serieQ(s), { departamento: 'Total', tipo_valor: 'corriente', base: null, pib: false, pc: false });
     const total = Cubo.total(q);
     if (!(total > 0)) return null;
     const nacional = Cubo.total(Object.assign({}, q, { departamento: ['Nacional'] }));
@@ -1139,7 +1139,9 @@ const HojaVisor = (() => {
       const sectoresSel = est.sel.sector || [];
       if (modoBarras() === 'aviso') return UI.vaciar(contProgramas).append(UI.estadoVacio(MSG_UNGOB, DET_UNGOB));
       if (IND_TD[inds()[0]] !== 'programación' || (!entreGob() && modo() !== 'simple')) return pistaP('Solo para la programación', 'El desglose por programa existe solo para «Planeado PPI» y «Monto inflexible»: deje elegido solo uno de esos.');
-      if (Medida.percapita) return pistaP('Sin per cápita por programa', 'No hay población por programa: use Totales o % del PIB.');
+      // «Por gobierno» lee el cubo (programa × departamento, con per cápita); «Entre gobiernos» usa programas.js,
+      // cuyo shard no se divide por población.
+      if (Medida.percapita && entreGob()) return pistaP('Sin per cápita por programa entre gobiernos', 'Compare gobiernos en Totales o % del PIB, o use «Por gobierno» para ver el per cápita por programa.');
       if (!entreGob()) {
         if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas (el cubo solo los desagrega dentro de un sector a la vez).');
         if (sectoresSel.length > 1) return pistaP(`Hay ${sectoresSel.length} sectores seleccionados`, 'El desglose es de un solo sector: deje uno elegido en «Sectores».');
@@ -1273,8 +1275,12 @@ const HojaVisor = (() => {
         // Entre gobiernos: ÍNDICE DE CRECIMIENTO (s2 frente a s1, el más viejo) — no una razón, así
         // el color y la cifra dicen directo "creció/decreció X %". Dentro de un mismo gobierno
         // (2 indicadores, p. ej. Compromisos/Planeado) se deja el % de avance de siempre.
+        // Entre gobiernos la variación respeta la unidad elegida (Constantes = crecimiento real, como el KPI de
+        // arriba); solo en % del PIB cae a corrientes. El avance (mismo gobierno) es una razón entre dos
+        // indicadores del mismo deflactor: el factor se cancela, así que corrientes da lo mismo.
+        const [pBase, eBase] = entreGob() && !Medida.pib ? [pl, ej] : [plC, ejC];
         const pct = entreGob()
-          ? plC.map((p, i) => (p > 0 ? (ejC[i] - p) / p : NaN))
+          ? pBase.map((p, i) => (p > 0 ? (eBase[i] - p) / p : NaN))
           : plC.map((p, i) => (p > 0 ? ejC[i] / p : NaN));
         const fills = porCambio ? colorCambio(pct) : coloresPct(pct, entreGob() ? 'razon' : 'avance');
         mapa.aviso(null);
@@ -1283,7 +1289,7 @@ const HojaVisor = (() => {
           fill: est.sel.departamento && !est.sel.departamento.includes(d) ? GRIS_INACTIVO : fills[i],
           etiqueta: entreGob()
             ? `<b>${Formato.esc(d)}</b><br>${Formato.esc(s1)}: ${Formato.cop(pl[i])}<br>` +
-              `${Formato.esc(s2)}: ${Formato.cop(ej[i])}<br>Diferencia: ${Formato.cop(ejC[i] - plC[i])}<br>Variación: ${Formato.pct(pct[i], 1, true)}`
+              `${Formato.esc(s2)}: ${Formato.cop(ej[i])}<br>Diferencia: ${Formato.cop(eBase[i] - pBase[i])}<br>Variación: ${Formato.pct(pct[i], 1, true)}`
             : `<b>${Formato.esc(d)}</b><br>${Formato.esc(s1)}: ${Formato.cop(pl[i])}<br>` +
               `${Formato.esc(s2)}: ${Formato.cop(ej[i])}<br>${Formato.esc(s2)} / ${Formato.esc(s1)}: ${Formato.pct(pct[i])}`
         })));

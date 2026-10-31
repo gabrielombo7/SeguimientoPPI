@@ -8,9 +8,9 @@
 //
 // El cubo viene shardeado por gobierno (ver pipeline/exportar_web.R). Los
 // shards se cargan bajo demanda y quedan en memoria: al arrancar solo se baja
-// el del gobierno vigente. Única unidad que viaja: 'corriente' — per cápita
-// (antes precalculado en R como 'corriente_pc') queda pendiente de calcularse
-// aquí cuando llegue la población DANE (ver Medida.pcDisponible). Las
+// el del gobierno vigente. Única unidad que viaja: 'corriente'. El PER CÁPITA
+// se calcula aquí con q.pc: cada fila se divide por la población DANE de su
+// departamento y vigencia (meta.poblacion; ver pesosPc). Las
 // CONSTANTES se calculan aquí: con q.base (año) las filas de corriente se
 // multiplican por índice[base] / índice[vigencia] (ver pesosVigencia). Con q.pib las filas de corriente
 // se pasan primero a constantes del año base y luego a % del PIB NOMINAL de ESE año base (ver pesosPib).
@@ -249,6 +249,30 @@ const Cubo = (() => {
     return cachePesosPib.get(k);
   }
 
+  // PER CÁPITA = valor ÷ habitantes de la fila (departamento × vigencia), en pesos por habitante. El cubo va en miles de
+  // millones de pesos: × 1e9. Fila con departamento → población de ese departamento; fila 'Total' (sin desagregar) →
+  // población NACIONAL (todo el monto, incluida la inversión no regionalizada); fila 'Nacional' (sin departamento
+  // asignado) y años sin población → peso 0, no entra. Año a año, como constantes: el per cápita del cuatrienio es la
+  // suma de los per cápita anuales. Se compone con constantes: pesosPc devuelve solo el factor de población, y
+  // recorrer lo multiplica por el de deflactación. Devuelve un arreglo [nivel de departamento] → Float64Array por nivel de vigencia.
+  let cachePc = null;
+  function poblacionDe(depto, anio) {
+    const p = meta.poblacion;
+    const k = p ? p.anios.indexOf(Number(anio)) : -1;
+    if (k < 0) return null;
+    const v = depto === 'Total' ? p.nacional[k] : (p.departamentos[depto] || [])[k];
+    return v || null;
+  }
+  function pesosPc() {
+    if (cachePc) return cachePc;
+    cachePc = meta.niveles.departamento.map((d) => Float64Array.from(meta.niveles.vigencia, (v) => {
+      if (d === 'Nacional' || !/^\d{4}$/.test(v)) return 0;
+      const h = poblacionDe(d, v);
+      return h ? 1e9 / h : 0;
+    }));
+    return cachePc;
+  }
+
   // Núcleo: recorre las filas de los shards pedidos aplicando las máscaras.
   // `visita(shard, fila, gobierno, peso)` se llama por cada fila que pasa el filtro; `peso` es 1, el factor de
   // deflactación de la vigencia de la fila si la consulta trae q.base (constantes), o el peso de % del PIB de esa
@@ -265,7 +289,8 @@ const Cubo = (() => {
     // Años EXPLÍCITOS que trae la consulta (antes de que el DES los pise), solo para % del PIB: determinan qué
     // años entran a la suma del denominador cuando el usuario fija uno o varios años concretos.
     const vigenciaSel = (pib && !vigTodas) ? [].concat(f.vigencia).map(String).filter((v) => /^\d{4}$/.test(v)) : null;
-    if ((pesosC || pib) && vigTodas) f.vigencia = DES;
+    const pc = !!q.pc && !pib;                             // per cápita (se puede combinar con constantes; % del PIB lo pisa)
+    if ((pesosC || pib || pc) && vigTodas) f.vigencia = DES;
     const masks = Object.keys(ARG_COL).map((arg) => [ARG_COL[arg], mascara(ARG_COL[arg], f[arg])]);
     // MONTOS FIJOS (meta.montos_fijos): un monto cerrado en constantes de un año (Privados del PPI 2023-2026: 949,7 billones de 2022), sin vigencia, sector ni
     // departamento. En constantes / % del PIB SIEMPRE hace falta inyectarlo aparte: ahí f.vigencia se pisa a
@@ -276,7 +301,8 @@ const Cubo = (() => {
     // también la contaría dos veces. Pero si fuente_general queda SIN ACOTAR ('Total', el caso por defecto,
     // p. ej. «Total del PPI sin filtros»), el marginal normal sigue sin incluirla — ahí sí hace falta.
     const fijosDe = (gob) => (meta.montos_fijos || []).filter((m) => m.ppi_gobierno === gob);
-    const fijosActivos = vigTodas && !(opc && opc.anual) && tv === 'corriente' && ((pesosC || pib) || f.fuente_general === 'Total');
+    // En per cápita NO se inyectan: el monto fijo no tiene vigencia ni departamento, no hay con qué dividirlo.
+    const fijosActivos = vigTodas && !(opc && opc.anual) && !pc && tv === 'corriente' && ((pesosC || pib) || f.fuente_general === 'Total');
     // 'Total' en fuente_general/fuente_fondo pide el marginal pre-agregado (no "cualquier fuente"), pero la
     // fila real del monto fijo tiene su propia fuente puntual (p. ej. fuente_general='Privados'), no 'Total':
     // filtrar aquí con el valor literal 'Total' la descartaría siempre. Para el match del monto fijo, 'Total'
@@ -293,13 +319,14 @@ const Cubo = (() => {
       const cols = masks.map(([c, m]) => [shard.cols[c], m]);
       const vig = shard.cols.vigencia;
       const pesos = pib ? pesosPib(gob, vigenciaSel) : pesosC;
+      const pcW = pc ? pesosPc() : null, dep = shard.cols.departamento;
       for (let i = 0; i < shard.n; i++) {
         let ok = true;
         for (let j = 0; j < cols.length; j++) {
           if (!cols[j][1][cols[j][0][i]]) { ok = false; break; }
         }
         if (!ok) continue;
-        const w = pesos ? pesos[vig[i]] : 1;
+        const w = (pesos ? pesos[vig[i]] : 1) * (pcW ? pcW[dep[i]][vig[i]] : 1);
         if (w) visita(shard, i, gob, w);
       }
       // montos fijos de este gobierno: en corrientes se suman tal cual (peso 1, sin deflactar);
@@ -374,6 +401,7 @@ const Cubo = (() => {
   return {
     init, cargar, preparar, total, agregar, agregarPorGobierno, rangoDeflactor, pibDe, indiceDe, pesosPib, pesoPibPorAnio,
     pibDisponible() { return !!(meta && meta.pib_nominal && meta.pib_nominal.anios.length); },
+    poblacionDisponible() { return !!(meta && meta.poblacion && meta.poblacion.anios.length); },
     get meta() { return meta; },
     niveles(col) { return meta.niveles[col] || []; },
     // Unidades de medida realmente disponibles para un gobierno × indicador

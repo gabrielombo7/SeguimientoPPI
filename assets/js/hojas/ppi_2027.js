@@ -119,7 +119,7 @@ const HojaPPI2027 = (() => {
   }
 
   function pctRegionalizado(s) {
-    const q = Object.assign({}, serieQ(s), { departamento: 'Total', tipo_valor: 'corriente', base: null, pib: false });
+    const q = Object.assign({}, serieQ(s), { departamento: 'Total', tipo_valor: 'corriente', base: null, pib: false, pc: false });
     const total = Cubo.total(q);
     if (!(total > 0)) return null;
     const nacional = Cubo.total(Object.assign({}, q, { departamento: ['Nacional'] }));
@@ -578,7 +578,6 @@ const HojaPPI2027 = (() => {
       const sectoresSel = est.sel.sector || [];
       const s1 = series()[0];
       if (IND_TD[s1] !== 'programación' || modo() !== 'simple') return pistaP('Solo para la programación', 'El desglose por programa existe solo para «Planeado PPI» y «Monto inflexible»: deje elegido solo uno de esos.');
-      if (Medida.percapita) return pistaP('Sin per cápita por programa', 'No hay población por programa: use Totales o % del PIB.');
       if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas (el cubo solo los desagrega dentro de un sector a la vez).');
       if (sectoresSel.length > 1) return pistaP(`Hay ${sectoresSel.length} sectores seleccionados`, 'El desglose es de un solo sector: deje uno elegido en «Sectores».');
       const filas = Cubo.agregar(serieQ(s1, { programa: DES }), 'programa');

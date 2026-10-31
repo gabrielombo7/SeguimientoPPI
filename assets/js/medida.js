@@ -4,11 +4,11 @@
 //   Medida  · Totales (miles de millones de pesos) | Per cápita (pesos por habitante) | % del PIB
 //   Unidad  · Corrientes | Constantes de un AÑO BASE que elige el usuario (en % del PIB no se elige: siempre es constantes del año base)
 //
-// Per cápita viene YA CALCULADO en el cubo (tipo_valor 'corriente_pc': el corriente
-// dividido por la población proyectada DANE del departamento y la vigencia; ver
-// 04. Consolidación/3. Consolidar/Código/03_construir_cubo.R). Es aditivo por todas las dimensiones
-// menos el departamento (el per cápita de dos departamentos no es la suma de los dos):
-// por eso, en per cápita, solo se elige UN departamento a la vez.
+// Per cápita se calcula AQUÍ, en el navegador (Cubo.recorrer con q.pc): cada fila del cubo en corrientes se
+// divide por la población proyectada DANE de su departamento y vigencia (meta.poblacion); sin departamento
+// elegido se divide por la población nacional. Es aditivo por todas las dimensiones menos el departamento
+// (el per cápita de dos departamentos no es la suma de los dos): por eso, en per cápita, solo se elige UN
+// departamento a la vez.
 //
 // Constantes se calculan AQUÍ, en el navegador, sobre cualquiera de las dos medidas:
 // valor × índice[base] / índice[vigencia], SIEMPRE con el deflactor implícito del PIB del MFMP
@@ -26,7 +26,7 @@ const Medida = (() => {
   const SERIE = 'PIB';                                            // el único índice de precios: deflactor implícito del PIB
   const SERIES = { PIB: 'Deflactor del PIB' };
 
-  const tipoValor = () => (est.modo === 'pc' ? 'corriente_pc' : 'corriente');
+  const tipoValor = () => 'corriente';                            // el cubo solo trae corrientes; per cápita, constantes y % del PIB se calculan aquí
   const constantes = () => est.constantes && est.modo !== 'pib';
 
   // Etiqueta completa de la unidad (subtítulos, notas)
@@ -62,17 +62,16 @@ const Medida = (() => {
         tipo_valor: tipoValor(),
         base: constantes() ? est.base : null,   // % del PIB ya no usa año base (Cubo.recorrer lo ignora en modo pib)
         deflactor: SERIE,
-        pib: est.modo === 'pib'
+        pib: est.modo === 'pib',
+        pc: est.modo === 'pc'
       });
     },
-    // La misma consulta pero en CORRIENTES sin % del PIB: para razones entre valores (participaciones, avance %),
-    // que no deben cambiar de denominador entre numerador y denominador.
-    enCorrientes(q) { return Object.assign({}, q, { pib: false, base: null }); },
+    // La misma consulta pero en CORRIENTES sin % del PIB ni per cápita: para razones entre valores (participaciones,
+    // avance %), que no deben cambiar de denominador entre numerador y denominador.
+    enCorrientes(q) { return Object.assign({}, q, { pib: false, pc: false, base: null }); },
 
-    // ¿Hay per cápita para todos estos gobierno × indicador? (cubo.meta.unidades)
-    pcDisponible(pares) {
-      return pares.length > 0 && pares.every(([g, i]) => Cubo.unidadesDe(g, i).includes('corriente_pc'));
-    },
+    // ¿Hay población para calcular el per cápita? (meta.poblacion; no depende del gobierno ni del indicador)
+    pcDisponible() { return Cubo.poblacionDisponible(); },
 
     // Año base válido: entero con índice de precios del deflactor del PIB
     validarBase(v) {
