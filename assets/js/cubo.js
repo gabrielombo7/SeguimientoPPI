@@ -268,11 +268,24 @@ const Cubo = (() => {
     if ((pesosC || pib) && vigTodas) f.vigencia = DES;
     const masks = Object.keys(ARG_COL).map((arg) => [ARG_COL[arg], mascara(ARG_COL[arg], f[arg])]);
     // MONTOS FIJOS (meta.montos_fijos): un monto cerrado en constantes de un año (Privados del PPI 2023-2026: 949,7 billones de 2022), sin vigencia, sector ni
-    // departamento. Vive en la fila «Totales» y en corrientes se muestra tal cual; en constantes / % del PIB se trata como un valor de ESE año de precios
-    // (peso del nivel de vigencia de su año), así se puede comparar con otros gobiernos. No tiene año: no entra al agrupar por vigencia.
+    // departamento. En constantes / % del PIB SIEMPRE hace falta inyectarlo aparte: ahí f.vigencia se pisa a
+    // DES (línea de arriba) y el recorrido normal ya no mira ninguna fila en 'Totales', ni la del monto fijo
+    // ni el marginal 'Total' de fuente_general (que tampoco lo trae — es anterior a que existiera el bolt-on
+    // de Privados). En corrientes el recorrido normal SÍ encuentra la fila del monto fijo cuando la consulta
+    // pide esa fuente puntual (fuente_general sin acotar a 'Total' no cambia su vigencia): inyectarla ahí
+    // también la contaría dos veces. Pero si fuente_general queda SIN ACOTAR ('Total', el caso por defecto,
+    // p. ej. «Total del PPI sin filtros»), el marginal normal sigue sin incluirla — ahí sí hace falta.
     const fijosDe = (gob) => (meta.montos_fijos || []).filter((m) => m.ppi_gobierno === gob);
-    const fijosActivos = (pesosC || pib) && vigTodas && !(opc && opc.anual) && tv === 'corriente';
-    const masksFijo = fijosActivos ? Object.keys(ARG_COL).map((arg) => [ARG_COL[arg], mascara(ARG_COL[arg], arg === 'vigencia' ? 'Totales' : f[arg])]) : null;
+    const fijosActivos = vigTodas && !(opc && opc.anual) && tv === 'corriente' && ((pesosC || pib) || f.fuente_general === 'Total');
+    // 'Total' en fuente_general/fuente_fondo pide el marginal pre-agregado (no "cualquier fuente"), pero la
+    // fila real del monto fijo tiene su propia fuente puntual (p. ej. fuente_general='Privados'), no 'Total':
+    // filtrar aquí con el valor literal 'Total' la descartaría siempre. Para el match del monto fijo, 'Total'
+    // SÍ significa "sin acotar" (no hay otra forma de pedir "la fuente que sea" en estas dos columnas).
+    const masksFijo = fijosActivos ? Object.keys(ARG_COL).map((arg) => {
+      let spec = arg === 'vigencia' ? 'Totales' : f[arg];
+      if ((arg === 'fuente_general' || arg === 'fuente_fondo') && spec === 'Total') spec = null;
+      return [ARG_COL[arg], mascara(ARG_COL[arg], spec)];
+    }) : null;
 
     for (const gob of [].concat(q.gobierno)) {
       const shard = shards.get(clave(gob, tv));
@@ -289,21 +302,30 @@ const Cubo = (() => {
         const w = pesos ? pesos[vig[i]] : 1;
         if (w) visita(shard, i, gob, w);
       }
-      // montos fijos de este gobierno (solo en constantes / % del PIB)
+      // montos fijos de este gobierno: en corrientes se suman tal cual (peso 1, sin deflactar);
+      // en constantes/%PIB, con el peso del año de precios del monto (igual que las filas normales).
       const fijos = fijosActivos ? fijosDe(gob) : [];
       if (fijos.length) {
         const nivV = meta.niveles.vigencia, nivFG = meta.niveles.fuente_general, nivFF = meta.niveles.fuente_fondo;
         const jTot = nivV.indexOf('Totales');
         for (const m of fijos) {
-          const j = nivV.indexOf(String(m.anio_precios)), wF = j >= 0 ? pesos[j] : 0;
+          let wF = 1;
+          if (pesosC || pib) {
+            const j = nivV.indexOf(String(m.anio_precios));
+            wF = j >= 0 ? pesos[j] : 0;
+          }
           const iFG = nivFG.indexOf(m.fuente), iFF = nivFF.indexOf(m.fuente);
           if (!wF) continue;
+          // 'Privados' existe como valor de fuente_general Y de fuente_fondo (fuente específica «Privados»,
+          // ver README): puede haber más de una fila en 'Totales' que matchee por una u otra vía (p. ej. el
+          // marginal de fuente_general y, aparte, el de fuente_fondo). El monto fijo es UNA sola cifra —se
+          // corta en la primera fila que pase el resto de filtros (masksFijo), para no sumarla más de una vez.
           const colsF = masksFijo.map(([c, mk]) => [shard.cols[c], mk]);
           for (let i = 0; i < shard.n; i++) {
             if (vig[i] !== jTot || (shard.cols.fuente_general[i] !== iFG && shard.cols.fuente_fondo[i] !== iFF)) continue;
             let ok = true;
             for (let k = 0; k < colsF.length; k++) { if (!colsF[k][1][colsF[k][0][i]]) { ok = false; break; } }
-            if (ok) visita(shard, i, gob, wF);
+            if (ok) { visita(shard, i, gob, wF); break; }
           }
         }
       }
@@ -371,6 +393,23 @@ const Cubo = (() => {
       );
       if (!f) return codigo;
       return codigo.replace(/[. ]+$/, '') + '. ' + f.nombre;
+    },
+    // Nombre de un programa (el código no es legible por sí solo, a diferencia de las líneas del
+    // PND): el mismo código puede cambiar de nombre entre gobiernos, así que se busca por
+    // (ppi_gobierno, programa) — ver meta.cat_programas.
+    etiqPrograma(gob, codigo) {
+      const f = (meta.cat_programas || []).find(
+        (x) => x.ppi_gobierno === gob && x.programa === codigo
+      );
+      return f ? f.nombre : codigo;
+    },
+    // Inverso de etiqPrograma: de un NOMBRE (lo que guardan los pickers/chips de Programa) al
+    // código que entiende el cubo, dentro de un gobierno — ver hojas/visor.js:filtroPrograma.
+    codigoPrograma(gob, nombre) {
+      const f = (meta.cat_programas || []).find(
+        (x) => x.ppi_gobierno === gob && x.nombre === nombre
+      );
+      return f ? f.programa : nombre;
     }
   };
 })();

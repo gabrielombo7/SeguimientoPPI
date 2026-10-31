@@ -41,7 +41,7 @@ const HojaPPI2027 = (() => {
     ambito: 'Por gobierno',
     gobiernos: [GOBIERNO], indicadores: ['Planeado PPI'],
     vista: 'Totales',
-    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null },
+    sel: { sector: null, departamento: null, vigencia: null, fuente: null, fondo: null, linea: null, tema: null, estrategia: null, programa: null },
     fondoDe: null,
     // Vista activa de las cajas con selector (no son filtros, solo qué se muestra):
     vistaFuentes: 'sin_privados',     // 'total' | 'sin_privados' | 'especifica' — por defecto sin Privados
@@ -96,6 +96,9 @@ const HojaPPI2027 = (() => {
     return Medida.aplicar({
       gobierno, tipo_dato: IND_TD[nombreInd], indicador: indCubo(nombreInd, !!est.sel.departamento),
       sector: est.sel.sector || 'Total',
+      // programa ⊂ sector: solo existe desagregado junto a un sector elegido (ver el comentario
+      // equivalente en cubo.js:normalizar) — por eso también se limpia al cambiar de sector (alternar).
+      programa: est.sel.programa || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(),
       // Ver el comentario equivalente en hojas/visor.js: «Sin privados» filtra TODO el tablero.
@@ -154,6 +157,8 @@ const HojaPPI2027 = (() => {
     // El Tema elegido pertenece a un Eje y la Estrategia a un Tema que acaban de cambiar.
     if (dim === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
     if (dim === 'tema') est.sel.estrategia = null;
+    // El Programa elegido pertenece a un Sector que acaba de cambiar (programa ⊂ sector).
+    if (dim === 'sector') est.sel.programa = null;
     const actual = est.sel[dim];
     if (dim === 'departamento' && Medida.percapita) {
       est.sel[dim] = actual && actual.length === 1 && actual[0] === valor ? null : [valor];
@@ -390,14 +395,16 @@ const HojaPPI2027 = (() => {
         Eje: est.sel.linea ? est.sel.linea.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
         Tema: est.sel.tema ? est.sel.tema.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
         Estrategia: est.sel.estrategia ? est.sel.estrategia.map((c) => Cubo.etiqLinea(GOBIERNO, c)) : null,
+        Programa: est.sel.programa ? est.sel.programa.map((c) => Cubo.etiqPrograma(GOBIERNO, c)) : null,
       };
-      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia' };
+      const claveDim = { Sector: 'sector', Departamento: 'departamento', Vigencia: 'vigencia', Fuente: 'fuente', 'Fuente específica': 'fondo', Eje: 'linea', Tema: 'tema', Estrategia: 'estrategia', Programa: 'programa' };
       UI.vaciar(chips).append(UI.chips(etiquetas,
         (dim) => {
           est.sel[claveDim[dim]] = null;
           if (claveDim[dim] === 'fuente') est.sel.fondo = null;
           if (claveDim[dim] === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
           if (claveDim[dim] === 'tema') est.sel.estrategia = null;
+          if (claveDim[dim] === 'sector') est.sel.programa = null;
           actualizar();
         },
         () => { limpiarSel(); actualizar(); }));
@@ -541,9 +548,6 @@ const HojaPPI2027 = (() => {
       } else if (fuentesSel.length > 1) {
         pista(`Hay ${fuentesSel.length} fuentes seleccionadas`,
           'El desglose es de una sola fuente: deje una sola elegida en «Fuentes».');
-      } else if (est.sel.linea) {
-        pista('Sin cruce con las líneas del PND',
-          'El cubo no cruza la fuente específica con las líneas del PND: quite la línea elegida para ver el desglose.');
       } else {
         contFondo.append(UI.h('div', { class: 'fuente-esp-de' }, 'Fuente:', UI.h('span', {}, fuentesSel[0])));
         const n = pintarTop(contFondo, 'fuente_fondo', 'fondo', true, 12);
@@ -562,43 +566,38 @@ const HojaPPI2027 = (() => {
       pintarLineas();
     }
 
-    let tokProg = 0;
-    async function pintarProgramas() {
-      const mio = ++tokProg;
+    // Programa ya es una dimensión real del cubo (como Sector): cruza con fuente, fuente
+    // específica, departamento, vigencia y las líneas del PND, pero solo DESAGREGADA junto a un
+    // sector elegido (programa ⊂ sector — ver el comentario en cubo.js:normalizar), así que esta
+    // caja sigue exigiendo un solo sector. Clic en una barra filtra todo el visor, igual que Sectores.
+    function pintarProgramas() {
       UI.vaciar(contProgramas);
       const pistaP = (msg, det) => contProgramas.append(UI.h('div', { class: 'fuente-esp-vacia' },
         UI.h('div', { class: 'icono-aviso', 'aria-hidden': 'true' }, 'i'),
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const sectoresSel = est.sel.sector || [];
-      if (inds()[0] !== 'Planeado PPI' || modo() !== 'simple') return pistaP('Solo para «Planeado PPI»', 'El desglose por programa existe solo para la programación.');
+      const s1 = series()[0];
+      if (IND_TD[s1] !== 'programación' || modo() !== 'simple') return pistaP('Solo para la programación', 'El desglose por programa existe solo para «Planeado PPI» y «Monto inflexible»: deje elegido solo uno de esos.');
       if (Medida.percapita) return pistaP('Sin per cápita por programa', 'No hay población por programa: use Totales o % del PIB.');
-      if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas.');
+      if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas (el cubo solo los desagrega dentro de un sector a la vez).');
       if (sectoresSel.length > 1) return pistaP(`Hay ${sectoresSel.length} sectores seleccionados`, 'El desglose es de un solo sector: deje uno elegido en «Sectores».');
-      if (est.sel.linea) return pistaP('Sin cruce con las líneas del PND', 'El desglose por programa no se cruza con las líneas del PND: quite la línea elegida.');
-      if (est.sel.fondo) return pistaP('Sin cruce con la fuente específica', 'El desglose por programa no se cruza con la fuente específica: quite la elegida en «Fuente específica».');
-      contProgramas.append(UI.cargando('Cargando los programas…'));
-      try { await Programas.cargar(GOBIERNO); } catch (e) {
-        if (mio !== tokProg) return;
-        UI.vaciar(contProgramas); return pistaP('No se pudieron cargar los programas', String(e.message || e));
-      }
-      if (mio !== tokProg) return;
-      // fuente: igual que baseQ() — «Sin privados» filtra también los programas, no solo el cubo.
-      const filtros = { sector: sectoresSel,
-                         fuente: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : null),
-                         departamento: est.sel.departamento, vigencia: est.sel.vigencia };
-      const ds = Programas.agregar(GOBIERNO, filtros, Medida);
-      UI.vaciar(contProgramas);
-      if (!ds.length || (ds.length === 1 && ds[0].cat === 'Sin programa')) {
-        return pistaP('Sin programas para esta combinación', 'Este gobierno no trae programas para el sector y los filtros elegidos.');
+      const filas = Cubo.agregar(serieQ(s1, { programa: DES }), 'programa');
+      const datos = filas.map((d) => ({ cat: Cubo.etiqPrograma(GOBIERNO, d.cat), valor: d.valor, codigo: d.cat }))
+        .filter((d) => d.valor > 0).sort((a, b) => b.valor - a.valor);
+      if (!datos.length) {
+        return pistaP('Sin programas para esta combinación', 'Este sector no tiene programas con monto para los filtros elegidos.');
       }
       contProgramas.append(UI.h('div', { class: 'fuente-esp-de' }, 'Sector:', UI.h('span', {}, sectoresSel[0])));
-      const r = Graficas.topOtros(ds, 12);
-      contProgramas.append(Graficas.barrasLista(r.datos, {}));
+      const porEtiqueta = new Map(datos.map((d) => [d.cat, d.codigo]));
+      const alSel = (etq) => { const c = porEtiqueta.get(etq); if (c) { alternar('programa', c); actualizar(); } };
+      const seleccionEtq = (est.sel.programa || []).map((c) => Cubo.etiqPrograma(GOBIERNO, c));
+      const r = Graficas.topOtros(datos, 12);
+      contProgramas.append(Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: seleccionEtq }));
       if (r.otros.length) {
         contProgramas.append(UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${r.otros.length}): `), r.otros.join(', ')));
       }
       contProgramas.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
-        'Informativo: el cubo no cruza programas con las demás dimensiones, así que las barras no filtran. Respeta la fuente, el departamento y la vigencia elegidos.'));
+        'Clic en una barra para filtrar todo el visor por ese programa.'));
     }
 
     function pintarMapa(m, s1, s2) {

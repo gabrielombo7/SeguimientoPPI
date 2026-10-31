@@ -13,7 +13,10 @@
 // resuelve el módulo Medida (medida.js): per cápita viene precalculado en el cubo y las
 // constantes (siempre con el deflactor del PIB) y el % del PIB se calculan en el navegador. «Fuente
 // específica» solo se abre con UNA fuente elegida en «Fuentes» (el cubo cruza fuente_fondo con su
-// fuente_general); «Programas» solo con UN sector elegido en «Sectores» (programas.js, aparte del cubo).
+// fuente_general); «Programas» solo con UN sector elegido en «Sectores» — dimensión real del cubo
+// («Por gobierno»: filtra todo el visor, como Sectores); al comparar gobiernos («Entre gobiernos»)
+// el código de programa no es comparable entre ellos, así que ahí sigue siendo informativo, por
+// NOMBRE, vía programas.js (aparte del cubo).
 // ============================================================================
 
 const HojaVisor = (() => {
@@ -161,6 +164,11 @@ const HojaVisor = (() => {
     return Medida.aplicar({
       gobierno, tipo_dato: IND_TD[nombreInd], indicador: indCubo(nombreInd, !!est.sel.departamento),
       sector: est.sel.sector || 'Total',
+      // programa ⊂ sector (ver el comentario en cubo.js:normalizar): solo se filtra «Por gobierno»
+      // (código propio de CADA gobierno, no comparable entre ellos — al comparar se sigue viendo
+      // el desglose por NOMBRE en programas.js, informativo, ver pintarProgramas). est.sel.programa
+      // guarda NOMBRES (igual que filtroPrograma()): se traduce al código de ESTE gobierno aquí.
+      programa: !entreGob() && est.sel.programa ? est.sel.programa.map((n) => Cubo.codigoPrograma(gobierno, n)) : 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(gobierno),
       fuente_general: est.sel.fuente || (est.vistaFuentes === 'sin_privados' ? fuentesSinPrivados() : 'Total'),
@@ -261,6 +269,8 @@ const HojaVisor = (() => {
     // antes deja de tener sentido (y, sin esto, podría quedar fijando un nivel que ya no coincide).
     if (dim === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
     if (dim === 'tema') est.sel.estrategia = null;
+    // El Programa elegido pertenece a un Sector que acaba de cambiar (programa ⊂ sector).
+    if (dim === 'sector') est.sel.programa = null;
     const actual = est.sel[dim];
     if (dim === 'departamento' && Medida.percapita) {
       est.sel[dim] = actual && actual.length === 1 && actual[0] === valor ? null : [valor];
@@ -783,6 +793,7 @@ const HojaVisor = (() => {
           if (claveDim[dim] === 'fuente') { est.sel.fondo = null; est.sel.entidad = null; }
           if (claveDim[dim] === 'linea') { est.sel.tema = null; est.sel.estrategia = null; }
           if (claveDim[dim] === 'tema') est.sel.estrategia = null;
+          if (claveDim[dim] === 'sector') est.sel.programa = null;
           pintarFiltros(); actualizar();
         },
         () => { limpiarSel(); pintarFiltros(); actualizar(); }));
@@ -1059,9 +1070,6 @@ const HojaVisor = (() => {
       } else if (fuentesSel.length > 1) {
         pista(contFondo, `Hay ${fuentesSel.length} fuentes seleccionadas`,
           'El desglose es de una sola fuente: deje una sola elegida en «Fuentes».');
-      } else if (est.sel.linea) {
-        pista(contFondo, 'Sin cruce con las líneas del PND',
-          'El cubo no cruza la fuente específica con las líneas del PND: quite la línea elegida para ver el desglose.');
       } else {
         contFondo.append(UI.h('div', { class: 'fuente-esp-de' }, 'Fuente:', UI.h('span', {}, fuentesSel[0])));
         const n = pintarTop(contFondo, 'fuente_fondo', 'fondo', true, entreGob() ? 16 : 12);
@@ -1113,11 +1121,14 @@ const HojaVisor = (() => {
       pintarLineas();
     }
 
-    // --- Programas: desglose de UN sector elegido en «Sectores», solo para «Planeado PPI».
-    //     Un gobierno → top 12 programas + Otros. Varios gobiernos («Entre gobiernos») → los 12 programas mayores
-    //     en conjunto, con una barra por gobierno (se comparan por NOMBRE de programa: los de 2011-2018 usan otra numeración).
-    //     Informativa (el cubo no cruza programas con las demás dimensiones): las barras no filtran.
-    //     Respeta fuente, departamento, vigencia y la unidad (corrientes, constantes o % del PIB). Ver programas.js.
+    // --- Programas: desglose de UN sector elegido en «Sectores», solo para la programación
+    //     («Planeado PPI» / «Monto inflexible»). «Por gobierno»: ya es una dimensión real del
+    //     cubo (como Sector) — cruza con fuente, fuente específica, entidad, departamento,
+    //     vigencia y las líneas del PND, y clic en una barra filtra todo el visor, igual que
+    //     Sectores (solo exige un sector porque programa ⊂ sector — ver cubo.js:normalizar).
+    //     «Entre gobiernos»: el código de programa es propio de CADA gobierno (no comparable
+    //     entre ellos), así que aquí se sigue comparando por NOMBRE vía programas.js, informativo
+    //     (no filtra) — igual que antes de esta migración.
     let tokProg = 0;
     async function pintarProgramas() {
       const mio = ++tokProg;
@@ -1127,8 +1138,31 @@ const HojaVisor = (() => {
         UI.h('div', { class: 'msg' }, msg), UI.h('div', { class: 'det' }, det)));
       const sectoresSel = est.sel.sector || [];
       if (modoBarras() === 'aviso') return UI.vaciar(contProgramas).append(UI.estadoVacio(MSG_UNGOB, DET_UNGOB));
-      if (inds()[0] !== 'Planeado PPI' || (!entreGob() && modo() !== 'simple')) return pistaP('Solo para «Planeado PPI»', 'El desglose por programa existe solo para la programación: deje elegido solo ese indicador.');
+      if (IND_TD[inds()[0]] !== 'programación' || (!entreGob() && modo() !== 'simple')) return pistaP('Solo para la programación', 'El desglose por programa existe solo para «Planeado PPI» y «Monto inflexible»: deje elegido solo uno de esos.');
       if (Medida.percapita) return pistaP('Sin per cápita por programa', 'No hay población por programa: use Totales o % del PIB.');
+      if (!entreGob()) {
+        if (!sectoresSel.length) return pistaP('Elija un sector para ver sus programas', 'Haga clic en un sector del gráfico «Sectores»: aquí aparecerán sus programas (el cubo solo los desagrega dentro de un sector a la vez).');
+        if (sectoresSel.length > 1) return pistaP(`Hay ${sectoresSel.length} sectores seleccionados`, 'El desglose es de un solo sector: deje uno elegido en «Sectores».');
+        const g = gobs()[0], s1 = inds()[0];
+        const filas = Cubo.agregar(serieQ(s1, { programa: DES }), 'programa');
+        const datos = filas.map((d) => ({ cat: Cubo.etiqPrograma(g, d.cat), valor: d.valor }))
+          .filter((d) => d.valor > 0).sort((a, b) => b.valor - a.valor);
+        if (!datos.length) {
+          return pistaP('Sin programas para esta combinación', 'Este sector no tiene programas con monto para los filtros elegidos.');
+        }
+        contProgramas.append(UI.h('div', { class: 'fuente-esp-de' }, 'Sector:', UI.h('span', {}, sectoresSel[0])));
+        // est.sel.programa guarda NOMBRES (igual que filtroPrograma()): alternar() ya trabaja
+        // directo con la etiqueta — Cubo.codigoPrograma() solo hace falta en baseQ(), al consultar.
+        const alSel = (etq) => { alternar('programa', etq); actualizar(); };
+        const r = Graficas.topOtros(datos, 12);
+        contProgramas.append(Graficas.barrasLista(r.datos, { onClick: alSel, seleccion: est.sel.programa }));
+        if (r.otros.length) {
+          contProgramas.append(UI.h('div', { class: 'sectores-otros' }, UI.h('b', {}, `Otros (${r.otros.length}): `), r.otros.join(', ')));
+        }
+        contProgramas.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
+          'Clic en una barra para filtrar todo el visor por ese programa.'));
+        return;
+      }
       const gs = gobs();
       contProgramas.append(UI.cargando('Cargando los programas…'));
       try { await Promise.all(gs.map((g) => Programas.cargar(g))); } catch (e) {
@@ -1146,18 +1180,14 @@ const HojaVisor = (() => {
       UI.vaciar(contProgramas);
       const solo = (ds) => !ds.length || (ds.length === 1 && ds[0].cat === 'Sin programa');
       if (porGob.every(([, ds]) => solo(ds))) {
-        return pistaP('Sin programas para esta combinación', gs.length > 1 ? 'Ningún gobierno elegido trae programas para el sector y los filtros elegidos.' : 'Este gobierno no trae programas para el sector y los filtros elegidos.');
+        return pistaP('Sin programas para esta combinación', 'Ningún gobierno elegido trae programas para el sector y los filtros elegidos.');
       }
       const etiquetaSector = !sectoresSel.length ? 'Todos los sectores'
         : sectoresSel.length === 1 ? sectoresSel[0] : `${sectoresSel.length} sectores`;
       contProgramas.append(UI.h('div', { class: 'fuente-esp-de' }, 'Sector:', UI.h('span', {}, etiquetaSector)));
       const alClic = (c) => { alternar('programa', c); actualizar(); };
       let otros = [];
-      if (gs.length === 1) {
-        const r = Graficas.topOtros(porGob[0][1], 12);
-        otros = r.otros;
-        contProgramas.append(Graficas.barrasLista(r.datos, { onClick: alClic, seleccion: est.sel.programa }));
-      } else if (modoBarras() === 'cambio') {
+      if (modoBarras() === 'cambio') {
         // Diferencia como en Sectores: una barra por programa, coloreada por la magnitud del
         // cambio entre los dos gobiernos (ver pintarCambio en pintar(), arriba).
         const [g1, g2] = gs;   // gs = gobs(): cronológico, el más viejo primero = base
@@ -1212,8 +1242,8 @@ const HojaVisor = (() => {
           `Nota: los programas no tienen ${sinCruce.join(', ')} como dato propio — ese filtro no se aplica en esta caja (sí respeta sector, fuente, departamento y vigencia).`));
       }
       contProgramas.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
-        'Clic en una barra para resaltarla (es informativo dentro de esta caja: el cubo no tiene programa como dimensión, así que no filtra las demás).' +
-        (gs.length > 1 ? ' Los gobiernos se comparan por nombre de programa: un mismo programa puede llamarse distinto entre gobiernos (en 2011-2018 la numeración y los nombres son otros).' : '')));
+        'Clic en una barra para resaltarla (es informativo dentro de esta caja al comparar gobiernos: el código de programa es propio de cada uno, así que no filtra las demás). ' +
+        'Los gobiernos se comparan por nombre de programa: un mismo programa puede llamarse distinto entre gobiernos (en 2011-2018 la numeración y los nombres son otros).'));
     }
 
     function pintarMapa(m, s1, s2) {

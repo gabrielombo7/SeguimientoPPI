@@ -4,8 +4,8 @@
     {
       "name": "ppi-tablero-local",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "7656"],
-      "port": 7656
+      "runtimeArgs": ["-m", "http.server", "7658"],
+      "port": 7658
     }
   ]
 }

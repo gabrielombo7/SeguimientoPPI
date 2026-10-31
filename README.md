@@ -13,6 +13,9 @@ python3 -m http.server 7656
 ```
 
 Para publicarlo se sube la carpeta completa (menos `pipeline/`) a cualquier hosting de archivos.
+**En vivo**: GitHub Pages, desde el repo [`gabrielombo7/SeguimientoPPI`](https://github.com/gabrielombo7/SeguimientoPPI) —
+<https://gabrielombo7.github.io/SeguimientoPPI/>. Publicar es `git push` a `main`: GitHub Pages
+reconstruye el sitio solo, no hace falta correr nada aparte.
 
 ## Cómo se actualiza (4 pasos)
 
@@ -53,21 +56,23 @@ El contrato entre los dos es `data/meta.js` (sus campos) y la forma de los shard
 quien va a regenerar `data/` avisa antes (qué va a tocar) y después (qué cambió, con cifras), para no
 pisar ediciones a medio hacer ni leer datos a medio escribir.
 
-**Ya no hay control de versiones (git)** en esta carpeta ni en `01. Estimación`: el historial de
-cambios vive en `0. Documentación/Historial.md` (por ronda y fecha), no en `git log`.
+**Esta carpeta sí tiene git** (a diferencia de `01. Estimación`, que no lo usa): es el repo
+`gabrielombo7/SeguimientoPPI`, publicado en GitHub Pages — ver «Cómo se abre». El resto de
+`01. Estimación` (el pipeline de R) no tiene control de versiones; su historial de cambios vive en
+`0. Documentación/Historial.md` (por ronda y fecha), no en `git log`.
 
 ## Capas de indicadores
 
 | Capa | Dónde se calcula | Qué hace |
 |---|---|---|
-| **Per cápita** (pre-tablero) | R, en el cubo (`tipo_valor = corriente_pc`) | pesos corrientes por habitante = monto ÷ población proyectada DANE del departamento y la vigencia; sin departamento ÷ población nacional; el cuatrienio suma los per cápita anuales |
+| **Per cápita** | Pendiente (Fase 3) | El cubo nuevo (15 columnas, 30-oct) ya no trae `corriente_pc` precalculado: queda por hacer en el navegador cuando llegue la población DANE. `Medida.pcDisponible()` ya consulta disponibilidad real vía `Cubo.unidadesDe()`, así que la interfaz se deshabilita sola (sin cambios de código cuando se active) |
 | **Constantes** (post-tablero) | Navegador (`assets/js/medida.js` + `Cubo.recorrer`) | `corriente × índice[año base] ÷ índice[vigencia]` con el deflactor implícito del PIB del MFMP (`meta.deflactores`); el usuario escribe el año base |
-| **Fuente específica** | R (`fuente_fondo` del cubo) + `visor.js` | desglose de UNA fuente elegida en «Fuentes»; clic filtra todo el visor |
+| **Fuente específica** | R (`fuente_fondo` del cubo) + `visor.js` | desglose de UNA fuente elegida en «Fuentes»; clic filtra todo el visor; cruza con las líneas del PND |
+| **Programa** | R (`programa` del cubo) + `visor.js`/`ppi_2027.js` | desglose de UN sector elegido en «Sectores»; solo existe desagregado junto a un sector (`programa ⊂ sector`), pero una vez fijado cruza con fuente, fuente específica, entidad, departamento, vigencia y líneas del PND. «Por gobierno»: clic filtra todo el visor, igual que Sectores. «Entre gobiernos»: el código es propio de cada gobierno (no comparable entre ellos), así que ahí sigue siendo informativa, comparando por nombre (`data/programas/`, `programas.js`) |
 
-Por qué el per cápita va en el cubo y las constantes no: el per cápita depende de la población
-(un insumo que no cambia con el usuario), mientras que las constantes dependen de un parámetro que
-sí elige el usuario (el año base). El per cápita **no es aditivo por departamento** (el de dos
-departamentos no es la suma de los dos): por eso con per cápita se elige un departamento a la vez.
+Las constantes dependen de un parámetro que elige el usuario (el año base), por eso se calculan en
+el navegador y no en el cubo. El per cápita, cuando se reactive, no será aditivo por departamento
+(el de dos departamentos no es la suma de los dos): por eso se elegirá un departamento a la vez.
 
 Las constantes se calculan año a año (el `Totales` del cubo ya es una suma en corrientes y no se
 puede deflactar con un solo factor). Con año base 2026 coinciden exactamente con el
@@ -77,11 +82,12 @@ tras la última ronda).
 
 ## Cómo se guardan los datos
 
-El cubo completo tiene ~2 M filas (con constantes y per cápita); el sitio exporta solo las
-alcanzables desde la interfaz y solo las unidades `corriente` y `corriente_pc` (~1 M filas, 22 MB).
-Cada fila son 9 columnas de nivel (`Uint8`) + relleno a 8 bytes + un `Float64` en base64, y va
-**shardeada por gobierno × unidad**: al abrir solo se baja el gobierno vigente en corrientes; el
-per cápita se baja al elegirlo. `Float64` y no `Float32` para que las cifras salgan idénticas a R.
+El cubo nuevo (30-oct, 15 columnas) viaja **solo en corrientes** — constantes, % del PIB, per
+cápita y las comparaciones se calculan del lado del tablero (ver «Capas de indicadores»); el sitio
+exporta solo las filas alcanzables desde la interfaz. Cada fila son columnas de nivel (`Uint8`,
+recompuestas a `Uint16` con un par `_lo`/`_hi` cuando una dimensión pasa de 255 valores distintos —
+caso de `programa`) + un `Float64` en base64, y va **shardeada por gobierno**: al abrir solo se baja
+el gobierno vigente. `Float64` y no `Float32` para que las cifras salgan idénticas a R.
 
 Los datos son `.js` que asignan un global (no `.json`) porque los navegadores bloquean `fetch()`
 sobre `file://`; por lo mismo el sitio usa scripts clásicos y no módulos ES.
@@ -141,8 +147,8 @@ recalculada independientemente). Todas coinciden a la precisión de `Float64`.
 - **Constantes**: siempre con el deflactor implícito del PIB (MFMP); se quitó la opción de IPC. Se conserva la nota «En revisión».
 - **% del PIB** (Visor): tercera opción de «Medida». Valor corriente ÷ PIB nominal del MFMP (`meta.pib_nominal`, de la hoja «Deflactor PIB» del archivo de
   deflactores; lo carga `1. Fuentes/Supuestos/Código/01_catalogos_supuestos.R`). No aplica al comparar dos indicadores del mismo gobierno ni en Descargar.
-- **Sectores**: se muestran los 20 mayores + «Otros». **Programas**: caja nueva que se abre al elegir UN sector; shards propios en `data/programas/`
-  (`pipeline/exportar_web.R`, sección 2b, desde `base_ppi.rds`), módulo `assets/js/programas.js`. Solo Planeado PPI, un gobierno a la vez; informativa.
+- **Sectores**: se muestran los 20 mayores + «Otros». **Programas**: caja que se abre al elegir UN sector (ver «Capas de indicadores» — desde el
+  30-oct es dimensión real del cubo «Por gobierno»; `data/programas/`/`programas.js` quedan para la comparación «Entre gobiernos», informativa por nombre).
 - **Colores**: Cooperación pasa a azul claro (`AZUL_CLARO` en `tema.js`).
 
 ## Cambios del 9-oct (portada, % del PIB, inflexible)
@@ -155,3 +161,9 @@ recalculada independientemente). Todas coinciden a la precisión de `Float64`.
 - **Fuente específica del PGN**: «Inversión» / «Funcionamiento» (la cuota Nación/Propios queda solo en las bases de consulta, columna «Cuota PGN»).
 - **Privados PPI 2023-2026**: fila fija de 949,7 billones (solo pie de Fuentes y fuente específica «Privados»; no está en el gran total ni en constantes).
 - **10-oct**: Privados con amarillo propio (mostaza); Privados 2023-26 entra en constantes y % del PIB (monto en precios de 2022 convertido con el deflactor del PIB; `montos_fijos` en meta); fuente específica del PGN homologada (Inversión / Funcionamiento, incl. «Transferencias para Inversión» 2023-26); fuentes ordenadas de mayor a menor.
+
+## Cambios del 30-oct (cubo nuevo de 15 columnas)
+- **Cubo regenerado** contra `4. Consolidar/3. Cubo/Cubo/tabla_indicadores.rds` (pipeline de R): ejecución (Compromisos/Obligaciones/Pagos) llega partida en `_siif` (PGN con SIIF, sin departamento) y `_piip` (PGN con PIIP, con departamento) — antes esa regla vivía en el cubo de R, ahora la decide quien consulta (`indCubo()` en `cubo.js`/`ppi_2027.js`/`visor.js`: SIIF por defecto, PIIP cuando la consulta abre departamento). `corriente_pc` ya no existe (ver «Capas de indicadores», per cápita pendiente de Fase 3).
+- **`programa` es dimensión real del cubo** (antes vivía aparte, en `data/programas/`, sin cruzar con nada): cruza con fuente, fuente específica, entidad, departamento, vigencia y las líneas del PND, siempre que haya un sector elegido (`programa ⊂ sector`, igual que `entidad ⊂ PGN`). «Por gobierno»: la caja Programas filtra todo el visor, igual que Sectores. «Entre gobiernos»: el código de programa no es comparable entre gobiernos, así que ahí se sigue comparando por nombre con `data/programas/`/`programas.js` (informativa, sin cambios). `Cubo.etiqPrograma()`/`Cubo.codigoPrograma()` traducen código ↔ nombre por gobierno.
+- **Fuente específica ya cruza con las líneas del PND** (el cubo nuevo lo trae; se quitó el aviso «sin cruce» que había en `ppi_2027.js`/`visor.js`).
+- **Fix: Privados 2023-2026 no se sumaba en corrientes sin filtrar fuente.** El monto fijo de Privados (949,7 miles de millones corrientes) solo se inyectaba en constantes/%PIB; en corrientes, pedir la fuente puntual (`['Privados']`) sí lo traía (fila real del cubo), pero el total sin filtrar fuente (`'Total'`) no — daba el mismo número que «Sin privados». Corregido en `cubo.js` (`recorrer`): la inyección de montos fijos ahora se activa en corrientes solo cuando `fuente_general` queda sin acotar (`'Total'`, el caso que de verdad lo necesita) y, para esa fila, el filtro de `fuente_general`/`fuente_fondo` del monto fijo se trata como «sin acotar» en vez de exigir el valor literal `'Total'` (que nunca calzaría con la fuente real del monto, p. ej. `Privados`). Verificado: corrientes sin filtro 1.314.068,79 → 2.263.768,79 (= «Sin privados» + Privados exacto, sin doble conteo); constantes y % del PIB sin cambios; PPI 2027-2030 (sin monto fijo) sin cambios.
