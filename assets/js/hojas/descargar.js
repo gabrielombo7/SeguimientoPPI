@@ -21,12 +21,23 @@ const HojaDescargar = (() => {
   };
   const TOTAL_DE = { vigencia: 'Totales', fuente_general: 'Total', sector: 'Total', linea1: 'Total', departamento: 'Total' };
 
+  // Códigos LÓGICOS (no necesariamente el nombre real de la columna del cubo): el resto del
+  // archivo los usa para ordenar, picker y nombre de archivo; solo indCubo() los traduce al
+  // nombre físico real justo antes de consultar el cubo (ver su comentario).
   const IND_CUBO = {
     'Planeado PPI': 'total_inversion', 'Monto inflexible': 'monto_inflexible', 'Compromisos': 'compromisos_ejecucion',
     'Obligaciones': 'obligaciones_ejecucion', 'Pagos': 'pagos_ejecucion'
   };
   const IND_NOMBRE = Object.fromEntries(Object.entries(IND_CUBO).map(([k, v]) => [v, k]));
   const ORDEN_IND = Object.values(IND_CUBO);
+  // Ejecución (Compromisos/Obligaciones/Pagos) viaja partida en el cubo: _siif (PGN con SIIF, SIN
+  // departamento) y _piip (PGN con PIIP, con departamento) — antes el cubo elegía solo según si la
+  // consulta abría departamento; ahora esa regla se aplica aquí. SIIF por defecto; PIIP cuando
+  // Departamento es el Eje 1/Eje 2 del corte, o hay un filtro de Departamento puesto.
+  const IND_EJECUCION = new Set(['compromisos_ejecucion', 'obligaciones_ejecucion', 'pagos_ejecucion']);
+  function indCubo(codigo, porDepto) {
+    return IND_EJECUCION.has(codigo) ? codigo + (porDepto ? '_piip' : '_siif') : codigo;
+  }
 
   const est = {
     modoComp: 'Categoría',
@@ -55,7 +66,7 @@ const HojaDescargar = (() => {
   function indicadoresDisp() {
     const out = [];
     for (const cod of ORDEN_IND) {
-      if (gobsSel().some((g) => Cubo.unidadesDe(g, cod).length)) out.push(cod);
+      if (gobsSel().some((g) => Cubo.unidadesDe(g, indCubo(cod, false)).length)) out.push(cod);
     }
     return out.length ? out : [ORDEN_IND[0]];
   }
@@ -89,9 +100,12 @@ const HojaDescargar = (() => {
     // En per cápita el departamento es de UNO a la vez (ver medida.js): se toma el primero
     if (Medida.percapita && (est.f.departamento || []).length > 1) est.f.departamento = est.f.departamento.slice(0, 1);
 
+    // Departamento "abierto" (ver indCubo arriba): es el Eje 1/Eje 2 del corte, o hay un filtro
+    // puntual puesto — en ambos casos la consulta necesita la variante PIIP de la ejecución.
+    const porDepto = esEjeSerie('departamento') || (est.f.departamento || []).length > 0;
     const q = Medida.aplicar({
       tipo_dato: null,
-      indicador: indMulti() ? est.indicadores : est.indicadores[0],
+      indicador: indMulti() ? est.indicadores.map((c) => indCubo(c, porDepto)) : indCubo(est.indicadores[0], porDepto),
       vigencia: argVal('vigencia'),
       fuente_general: argVal('fuente_general'),
       sector: argVal('sector'),
@@ -115,7 +129,9 @@ const HojaDescargar = (() => {
         let serie = sf ? de(sf) : 'valor';
         if (ef === 'linea1') categoria = Cubo.etiqLinea(gobsSel()[0], categoria);
         if (sf === 'linea1') serie = Cubo.etiqLinea(gobsSel()[0], serie);
-        if (sf === 'indicador') serie = IND_NOMBRE[serie] || Formato.indicador(serie);
+        // El valor que trae el cubo aquí es el código FÍSICO (p. ej. compromisos_ejecucion_siif):
+        // se le quita el sufijo _siif/_piip para volver al código lógico antes de buscar el nombre.
+        if (sf === 'indicador') serie = IND_NOMBRE[String(serie).replace(/_(siif|piip)$/, '')] || Formato.indicador(serie);
         filas.push({ categoria, serie, valor: r.valor });
       });
     }

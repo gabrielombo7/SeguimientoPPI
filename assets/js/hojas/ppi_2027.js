@@ -24,6 +24,16 @@ const HojaPPI2027 = (() => {
     'Planeado PPI': 'programación', 'Monto inflexible': 'programación', 'Compromisos': 'ejecución',
     'Obligaciones': 'ejecución', 'Pagos': 'ejecución'
   };
+  // Ejecución (Compromisos/Obligaciones/Pagos) viaja partida en el cubo: _siif (PGN con SIIF, SIN
+  // departamento) y _piip (PGN con PIIP, con departamento) — antes el cubo elegía solo según si la
+  // consulta abría departamento; ahora esa regla se aplica aquí. SIIF por defecto (coincide con el
+  // total nacional); PIIP solo cuando la consulta abre departamento (filtra uno puntual, o lo
+  // desagrega para el mapa — ahí quien llama pasa porDepto=true explícito).
+  const IND_EJECUCION = new Set(['Compromisos', 'Obligaciones', 'Pagos']);
+  function indCubo(nombreInd, porDepto) {
+    const base = IND_CUBO[nombreInd];
+    return IND_EJECUCION.has(nombreInd) ? base + (porDepto ? '_piip' : '_siif') : base;
+  }
 
   const MSG_MULTI = 'Elija 1 o 2 series para el mapa (o use Descargar Reportes)';
 
@@ -48,7 +58,7 @@ const HojaPPI2027 = (() => {
   function gobs() { return [GOBIERNO]; }
 
   function indsDisp() {
-    const presentes = IND_ORDEN.filter((n) => Cubo.unidadesDe(GOBIERNO, IND_CUBO[n]).length);
+    const presentes = IND_ORDEN.filter((n) => Cubo.unidadesDe(GOBIERNO, indCubo(n, false)).length);
     return presentes.length ? presentes : ['Planeado PPI'];
   }
 
@@ -75,7 +85,7 @@ const HojaPPI2027 = (() => {
   const seriesVisual = () => series();
 
   function pcDisponible() {
-    return Medida.pcDisponible(inds().map((n) => [GOBIERNO, IND_CUBO[n]]));
+    return Medida.pcDisponible(inds().map((n) => [GOBIERNO, indCubo(n, false)]));
   }
 
   function vigenciasDe() { return []; }           // sin uso: esta hoja nunca compara gobiernos
@@ -84,7 +94,7 @@ const HojaPPI2027 = (() => {
 
   function baseQ(gobierno, nombreInd) {
     return Medida.aplicar({
-      gobierno, tipo_dato: IND_TD[nombreInd], indicador: IND_CUBO[nombreInd],
+      gobierno, tipo_dato: IND_TD[nombreInd], indicador: indCubo(nombreInd, !!est.sel.departamento),
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(),
@@ -351,7 +361,7 @@ const HojaPPI2027 = (() => {
           UI.kpi(Formato.cop(Cubo.total(serieQ(s))), s + ' de la selección', acentos[i % acentos.length]))));
       } else {
         const totSel = Cubo.total(serieQ(s1));
-        const qUni = Medida.aplicar({ gobierno: GOBIERNO, tipo_dato: IND_TD[s1], indicador: IND_CUBO[s1] });
+        const qUni = Medida.aplicar({ gobierno: GOBIERNO, tipo_dato: IND_TD[s1], indicador: indCubo(s1, false) });
         const totUni = Cubo.total(qUni);
         const razon = Cubo.total(Medida.enCorrientes(serieQ(s1))) / Cubo.total(Medida.enCorrientes(qUni));
         const etqPart = s1 === 'Planeado PPI' ? '% del total del PPI' : '% del total de ' + s1.toLowerCase();
@@ -596,12 +606,14 @@ const HojaPPI2027 = (() => {
       UI.vaciar(contLeyenda);
 
       if (m === 'balance') {
-        const den = new Map(Cubo.agregar(serieQ(s1, { departamento: DES }), 'departamento').map((d) => [d.cat, d.valor]));
-        const num = new Map(Cubo.agregar(serieQ(s2, { departamento: DES }), 'departamento').map((d) => [d.cat, d.valor]));
+        // indicador: indCubo(s, true) — el mapa abre departamento, así que la ejecución (si hay)
+        // necesita la variante PIIP (SIIF no tiene filas por departamento).
+        const den = new Map(Cubo.agregar(serieQ(s1, { departamento: DES, indicador: indCubo(s1, true) }), 'departamento').map((d) => [d.cat, d.valor]));
+        const num = new Map(Cubo.agregar(serieQ(s2, { departamento: DES, indicador: indCubo(s2, true) }), 'departamento').map((d) => [d.cat, d.valor]));
         const pl = nombres.map((d) => den.get(d) || 0);
         const ej = nombres.map((d) => num.get(d) || 0);
-        const denC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s1, { departamento: DES })), 'departamento').map((d) => [d.cat, d.valor]));
-        const numC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s2, { departamento: DES })), 'departamento').map((d) => [d.cat, d.valor]));
+        const denC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s1, { departamento: DES, indicador: indCubo(s1, true) })), 'departamento').map((d) => [d.cat, d.valor]));
+        const numC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s2, { departamento: DES, indicador: indCubo(s2, true) })), 'departamento').map((d) => [d.cat, d.valor]));
         const plC = nombres.map((d) => denC.get(d) || 0);
         const ejC = nombres.map((d) => numC.get(d) || 0);
         const pct = plC.map((p, i) => (p > 0 ? ejC[i] / p : NaN));
@@ -619,7 +631,7 @@ const HojaPPI2027 = (() => {
         const notaReg1 = notaRegional([s1, s2]);
         if (notaReg1) contLeyenda.append(Mapa.nota(notaReg1));
       } else if (m === 'simple') {
-        const d = new Map(Cubo.agregar(serieQ(s1, { departamento: DES }), 'departamento').map((x) => [x.cat, x.valor]));
+        const d = new Map(Cubo.agregar(serieQ(s1, { departamento: DES, indicador: indCubo(s1, true) }), 'departamento').map((x) => [x.cat, x.valor]));
         const v = nombres.map((n) => (d.has(n) ? d.get(n) : NaN));
         const fills = coloresValor(v);
         const ok = v.filter(Number.isFinite);

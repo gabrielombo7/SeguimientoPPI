@@ -31,6 +31,16 @@ const HojaVisor = (() => {
     'Planeado PPI': 'programación', 'Monto inflexible': 'programación', 'Compromisos': 'ejecución',
     'Obligaciones': 'ejecución', 'Pagos': 'ejecución'
   };
+  // Ejecución (Compromisos/Obligaciones/Pagos) viaja partida en el cubo: _siif (PGN con SIIF, SIN
+  // departamento) y _piip (PGN con PIIP, con departamento) — antes el cubo elegía solo según si la
+  // consulta abría departamento; ahora esa regla se aplica aquí. SIIF por defecto (coincide con el
+  // total nacional); PIIP solo cuando la consulta abre departamento (filtra uno puntual, o lo
+  // desagrega para el mapa — ahí quien llama pasa porDepto=true explícito).
+  const IND_EJECUCION = new Set(['Compromisos', 'Obligaciones', 'Pagos']);
+  function indCubo(nombreInd, porDepto) {
+    const base = IND_CUBO[nombreInd];
+    return IND_EJECUCION.has(nombreInd) ? base + (porDepto ? '_piip' : '_siif') : base;
+  }
 
   const MSG_MULTI = 'Elija 1 o 2 series para el mapa (o use Descargar Reportes)';
   const MSG_UNGOB = 'Seleccione otro gobierno para comparar';
@@ -71,7 +81,7 @@ const HojaVisor = (() => {
     const presentes = new Set();
     IND_ORDEN.forEach((n) => {
       for (const g of gobs()) {
-        if (Cubo.unidadesDe(g, IND_CUBO[n]).length) { presentes.add(n); break; }
+        if (Cubo.unidadesDe(g, indCubo(n, false)).length) { presentes.add(n); break; }
       }
     });
     const d = IND_ORDEN.filter((n) => presentes.has(n));
@@ -113,7 +123,7 @@ const HojaVisor = (() => {
   // ¿Existe el per cápita para todas las combinaciones gobierno × indicador elegidas?
   function pcDisponible() {
     const pares = [];
-    for (const g of gobs()) for (const n of inds()) pares.push([g, IND_CUBO[n]]);
+    for (const g of gobs()) for (const n of inds()) pares.push([g, indCubo(n, false)]);
     return Medida.pcDisponible(pares);
   }
 
@@ -125,7 +135,7 @@ const HojaVisor = (() => {
   function vigenciasDe(gobierno) {
     const ind = inds()[0], clave = gobierno + '|' + ind;
     if (!_vigGob.has(clave)) {
-      const v = Cubo.agregar({ gobierno, tipo_dato: IND_TD[ind], indicador: IND_CUBO[ind], vigencia: DES }, 'vigencia')
+      const v = Cubo.agregar({ gobierno, tipo_dato: IND_TD[ind], indicador: indCubo(ind, false), vigencia: DES }, 'vigencia')
         .filter((d) => d.valor > 0).map((d) => String(d.cat)).sort();
       if (!v.length) return v;               // shard sin cargar todavía: no cachear el vacío
       _vigGob.set(clave, v);
@@ -149,7 +159,7 @@ const HojaVisor = (() => {
     // de TODO el tablero (no solo de su propia caja): KPIs, Sectores, Vigencias y el mapa quedan
     // sin Privados hasta que se elija una fuente puntual o se pase a «Total».
     return Medida.aplicar({
-      gobierno, tipo_dato: IND_TD[nombreInd], indicador: IND_CUBO[nombreInd],
+      gobierno, tipo_dato: IND_TD[nombreInd], indicador: indCubo(nombreInd, !!est.sel.departamento),
       sector: est.sel.sector || 'Total',
       departamento: est.sel.departamento || 'Total',
       vigencia: vigSel(gobierno),
@@ -725,8 +735,8 @@ const HojaVisor = (() => {
         const totSel = Cubo.total(serieQ(s1));
         // Universo = el mismo indicador SIN la selección cruzada
         const qUni = Medida.aplicar(entreGob()
-          ? { gobierno: s1, tipo_dato: IND_TD[inds()[0]], indicador: IND_CUBO[inds()[0]] }
-          : { gobierno: gobs()[0], tipo_dato: IND_TD[s1], indicador: IND_CUBO[s1] });
+          ? { gobierno: s1, tipo_dato: IND_TD[inds()[0]], indicador: indCubo(inds()[0], false) }
+          : { gobierno: gobs()[0], tipo_dato: IND_TD[s1], indicador: indCubo(s1, false) });
         const totUni = Cubo.total(qUni);
         // La razón SIEMPRE en corrientes (Medida.enCorrientes): en % del PIB, la selección y el universo
         // pueden cubrir distinto conjunto de años y por lo tanto distinto denominador.
@@ -1214,15 +1224,20 @@ const HojaVisor = (() => {
         // «Cambio en totales» (ver el selector «Comparación»): el mapa pasa de índice de crecimiento
         // (con signo) a la misma paleta por MAGNITUD que usan las barras — mismo pct, otro color.
         const porCambio = entreGob() && modoBarras() === 'cambio';
-        const den = new Map(Cubo.agregar(serieQ(s1, { departamento: DES }), 'departamento').map((d) => [d.cat, d.valor]));
-        const num = new Map(Cubo.agregar(serieQ(s2, { departamento: DES }), 'departamento').map((d) => [d.cat, d.valor]));
+        // indicador: indCubo(..., true) — el mapa abre departamento, necesita la variante PIIP si
+        // hay ejecución. Entre gobiernos s1/s2 son NOMBRES DE GOBIERNO (ver baseQ): el indicador
+        // real es siempre inds()[0], igual que arma baseQ ahí.
+        const indMapa = entreGob() ? () => inds()[0] : (s) => s;
+        const ind1 = indCubo(indMapa(s1), true), ind2 = indCubo(indMapa(s2), true);
+        const den = new Map(Cubo.agregar(serieQ(s1, { departamento: DES, indicador: ind1 }), 'departamento').map((d) => [d.cat, d.valor]));
+        const num = new Map(Cubo.agregar(serieQ(s2, { departamento: DES, indicador: ind2 }), 'departamento').map((d) => [d.cat, d.valor]));
         const pl = nombres.map((d) => den.get(d) || 0);
         const ej = nombres.map((d) => num.get(d) || 0);
         // La razón/variación SIEMPRE en corrientes (Medida.enCorrientes): en % del PIB, s1/s2 pueden cubrir
         // distinto conjunto de años (p. ej. dos gobiernos) y por lo tanto distinto denominador — mezclarlos
         // en una sola razón ya convertida a % del PIB no tendría sentido.
-        const denC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s1, { departamento: DES })), 'departamento').map((d) => [d.cat, d.valor]));
-        const numC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s2, { departamento: DES })), 'departamento').map((d) => [d.cat, d.valor]));
+        const denC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s1, { departamento: DES, indicador: ind1 })), 'departamento').map((d) => [d.cat, d.valor]));
+        const numC = new Map(Cubo.agregar(Medida.enCorrientes(serieQ(s2, { departamento: DES, indicador: ind2 })), 'departamento').map((d) => [d.cat, d.valor]));
         const plC = nombres.map((d) => denC.get(d) || 0);
         const ejC = nombres.map((d) => numC.get(d) || 0);
         // Entre gobiernos: ÍNDICE DE CRECIMIENTO (s2 frente a s1, el más viejo) — no una razón, así
@@ -1253,7 +1268,8 @@ const HojaVisor = (() => {
         const notaReg1 = notaRegional([s1, s2]);
         if (notaReg1) contLeyenda.append(Mapa.nota(notaReg1));
       } else if (m === 'simple') {
-        const d = new Map(Cubo.agregar(serieQ(s1, { departamento: DES }), 'departamento').map((x) => [x.cat, x.valor]));
+        // 'simple' solo ocurre sin entreGob() (ver modo()): s1 ya es un nombre de indicador real.
+        const d = new Map(Cubo.agregar(serieQ(s1, { departamento: DES, indicador: indCubo(s1, true) }), 'departamento').map((x) => [x.cat, x.valor]));
         const v = nombres.map((n) => (d.has(n) ? d.get(n) : NaN));
         const fills = coloresValor(v);
         const ok = v.filter(Number.isFinite);

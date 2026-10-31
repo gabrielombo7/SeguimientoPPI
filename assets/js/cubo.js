@@ -6,11 +6,12 @@
 //   'Total'   = dimensión no desagregada en esa fila
 //   'Totales' = vigencia agregada del cuatrienio completo
 //
-// El cubo viene shardeado por gobierno × unidad de medida (ver
-// pipeline/exportar_web.R). Los shards se cargan bajo demanda y quedan en
-// memoria: al arrancar solo se baja el del gobierno vigente en corrientes.
-// Unidades que viajan: 'corriente' y 'corriente_pc' (pesos por habitante, precalculado
-// en R). Las CONSTANTES se calculan aquí: con q.base (año) las filas de corriente se
+// El cubo viene shardeado por gobierno (ver pipeline/exportar_web.R). Los
+// shards se cargan bajo demanda y quedan en memoria: al arrancar solo se baja
+// el del gobierno vigente. Única unidad que viaja: 'corriente' — per cápita
+// (antes precalculado en R como 'corriente_pc') queda pendiente de calcularse
+// aquí cuando llegue la población DANE (ver Medida.pcDisponible). Las
+// CONSTANTES se calculan aquí: con q.base (año) las filas de corriente se
 // multiplican por índice[base] / índice[vigencia] (ver pesosVigencia). Con q.pib las filas de corriente
 // se pasan primero a constantes del año base y luego a % del PIB NOMINAL de ESE año base (ver pesosPib).
 //
@@ -34,7 +35,7 @@ const Cubo = (() => {
   // arg de consulta → columna del cubo
   const ARG_COL = {
     indicador: 'indicador', tipo_dato: 'tipo_dato', vigencia: 'vigencia',
-    fuente_general: 'fuente_general', fuente_fondo: 'fuente_fondo', sector: 'sector',
+    fuente_general: 'fuente_general', fuente_fondo: 'fuente_fondo', sector: 'sector', programa: 'programa',
     departamento: 'departamento', linea1: 'linea1_pnd', linea2: 'linea2_pnd', linea3: 'linea3_pnd',
     entidad: 'entidad'
   };
@@ -147,6 +148,10 @@ const Cubo = (() => {
     const r = {
       indicador: null, tipo_dato: null, vigencia: 'Totales',
       fuente_general: 'Total', fuente_fondo: 'Total', sector: 'Total', departamento: 'Total',
+      // programa default 'Total' por la misma razón que entidad: solo existe desagregado junto a
+      // un sector elegido (programa ⊂ sector) — sin fijarlo, cualquier consulta debe quedarse con
+      // el marginal, si no se sumarían el total del sector Y cada programa suyo.
+      programa: 'Total',
       // linea3 default 'Total' (no null): a diferencia de linea2 —seguro en null porque linea1
       // por defecto ya es 'Total' y ahí no hay filas de linea2 específico—, un caller que fije
       // linea2 a un Tema concreto sin tocar linea3 SÍ tiene ahora filas de Estrategia debajo; con
