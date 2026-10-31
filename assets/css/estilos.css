@@ -159,8 +159,11 @@ a { color: inherit; }
 .panel-fijo { position: sticky; top: 76px; }
 
 /* Acordeón del panel de filtros (izquierda): botón redondo anclado al borde de .col-filtros, igual
-   en las 4 hojas que lo usan (ver UI.colFiltrosColapsable en ui.js). Colapsado, el panel se reduce a
-   una franja angosta (solo el botón) y .col-contenido recupera ese ancho. */
+   en las 4 hojas que lo usan (ver UI.colFiltrosColapsable en ui.js). Expandido, el botón vive junto
+   al panel (se desplaza con el scroll, como el resto de la página) — ahí siempre está a la vista
+   porque se ve justo al abrir. Colapsado, el panel se reduce a una franja angosta y .col-contenido
+   recupera ese ancho; ahí el botón pasa a `fixed` (no se va con el scroll): es la ÚNICA forma de
+   volver a abrir el panel, así que tiene que seguir alcanzable sin importar cuánto se haya bajado. */
 .btn-colapsar-filtros {
   position: absolute; top: .25rem; right: -14px; z-index: 2;
   width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--dnp-borde);
@@ -168,9 +171,9 @@ a { color: inherit; }
   font-size: .85rem; line-height: 1; cursor: pointer;
 }
 .btn-colapsar-filtros:hover { border-color: var(--dnp-primario); color: var(--dnp-primario); }
-.col-filtros-colapsado { flex: 0 0 32px; max-width: 32px; overflow: hidden; }
+.col-filtros-colapsado { flex: 0 0 32px; max-width: 32px; }
 .col-filtros-colapsado .panel-fijo { display: none; }
-.col-filtros-colapsado .btn-colapsar-filtros { right: auto; left: 2px; }
+.col-filtros-colapsado .btn-colapsar-filtros { position: fixed; top: 90px; left: 24px; right: auto; }
 
 /* ---------------------------------------------------------------- Tarjetas */
 .card-dnp {

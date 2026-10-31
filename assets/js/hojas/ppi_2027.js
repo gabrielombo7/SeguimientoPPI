@@ -223,16 +223,14 @@ const HojaPPI2027 = (() => {
             UI.h('div', { class: 'col-6' },
               UI.card(tituloFuentes, UI.h('div', {}, envFuentes, envFondo), { acciones: accFuentes })),
             UI.h('div', { class: 'col-6' }, contLineas)),
+          // Vigencias arriba de Departamentos, en la misma columna angosta (col-5): altura chica
+          // (ver el `alto` reducido al pintarla) para que las dos quepan sin alargar la fila.
           UI.h('div', { class: 'fila-graficas' },
             UI.h('div', { class: 'col-7' },
               UI.card(tituloSector, UI.h('div', {}, envSectores, envProgramas), { acciones: accSector })),
-            UI.h('div', { class: 'col-5' }, UI.card('Departamentos',
-              UI.h('div', {}, contMapa, contLeyenda)))),
-          // Vigencias debajo de Sectores, mismo ancho (col-7 + un espaciador col-5 vacío, igual
-          // proporción que la fila de arriba) — no estirada a toda la fila.
-          UI.h('div', { class: 'fila-graficas' },
-            UI.h('div', { class: 'col-7' }, UI.card('Vigencias', contVigencias)),
-            UI.h('div', { class: 'col-5' }))))));
+            UI.h('div', { class: 'col-5' },
+              UI.card('Vigencias', contVigencias),
+              UI.card('Departamentos', UI.h('div', {}, contMapa, contLeyenda))))))));
 
     let mapa = null;
 
@@ -443,21 +441,23 @@ const HojaPPI2027 = (() => {
       {
         const d = porDim('vigencia');
         const orden = (a, b) => String(a.cat).localeCompare(String(b.cat), 'es', { numeric: true });
+        // alto chico (140): Vigencias va arriba de Departamentos en una columna angosta — se
+        // prioriza que quepan las dos sin alargar la fila, pero sigue legible (ejes + etiquetas).
         if (mb === 'overlay') {
           contVigencias.append(Graficas.barrasBalance(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320
+            nombrePlan: s1, nombreEjec: s2, orientacion: 'v', ancho: 320, alto: 140
           }));
         } else if (mb === 'grupo') {
           const g = Graficas.barrasAgrupadas(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            pal: palSeries(), orientacion: 'v', ancho: 320
+            pal: palSeries(), orientacion: 'v', ancho: 320, alto: 140
           });
           contVigencias.append(g.svg, Graficas.leyenda(g.series, g.pal));
         } else {
           contVigencias.append(Graficas.barrasV(d.sort(orden), {
             onClick: (c) => { alternar('vigencia', c); actualizar(); }, seleccion: est.sel.vigencia,
-            ancho: 320, alto: 240
+            ancho: 320, alto: 140
           }));
         }
       }

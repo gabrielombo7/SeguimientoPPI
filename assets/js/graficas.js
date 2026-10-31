@@ -320,7 +320,7 @@ const Graficas = (() => {
 
   // --- Barras de balance (planeado de fondo, ejecutado encima + % de avance) --
   function barrasBalance(datos, opciones = {}) {
-    const { onClick, seleccion, nombrePlan, nombreEjec, orientacion = 'h', ancho = 560, altoFila = 26, margenIzq = 150 } = opciones;
+    const { onClick, seleccion, nombrePlan, nombreEjec, orientacion = 'h', ancho = 560, altoFila = 26, margenIzq = 150, alto: altoV = 250 } = opciones;
     const max = Math.max(0, ...datos.map((d) => Math.max(d.planeado, d.ejecutado)));
 
     if (orientacion === 'h') {
@@ -351,7 +351,7 @@ const Graficas = (() => {
       return svg;
     }
 
-    const alto = 250, y0 = alto - 30, y1 = 14, x0 = 52;
+    const alto = altoV, y0 = alto - 30, y1 = 14, x0 = 52;
     const esc = (v) => (max > 0 ? (v / max) * (y0 - y1) : 0);
     const paso = (ancho - x0 - 10) / Math.max(1, datos.length);
     const svg = s('svg', { class: 'grafica', viewBox: `0 0 ${ancho} ${alto}` });
