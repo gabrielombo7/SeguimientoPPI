@@ -1107,7 +1107,7 @@ const HojaVisor = (() => {
         } else {
           contEntidad.append(UI.h('p', { class: 'texto-suave', style: { margin: '.5rem 0 0' } },
             'Clic en una barra para filtrar todo el visor por esa entidad. En PPI 2027-2030 el PGN son las ' +
-            'cuotas de funcionamiento e inversión cargadas en la PIIP; la inversión aún es provisional.'));
+            'reportes de funcionamiento (R3) e inversión (R2) de la PIIP, con programa, línea del PND y departamento.'));
         }
       }
 
